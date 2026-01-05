@@ -1,0 +1,67 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+.pnpm-debug.log*
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Environment files
+.env
+.env*.local
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+.venv_*/
+venv/
+ENV/
+env/
+*.egg-info/
+.pytest_cache/
+
+# DuckDB
+*.duckdb
+*.duckdb.wal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Testing
+test-results/
+playwright-report/
+.lighthouseci/
+
+# Temp/Debug files
+*.tmp
+debug_*.txt
+screenshot*.png
+
+# Data files
+rawdata/
+*.csv
+*.jsonl
+
+# Outputs
+audit_outputs/
+reports/
