@@ -1,0 +1,175 @@
+### Dev Diary — PatientMatch rebuild: PMQ-first frontend + geo primitives (2025-12-22)
+
+#### What I set out to do
+
+Move from the legacy “criteria_json + old Supabase sprawl + mixed backend prototypes” toward a clean **dataset-first pipeline** with a thin, deterministic frontend that reads from a single serving contract. Prove the loop end-to-end: **DuckDB Gold → Supabase Pilot → Next.js UI renders questionnaires → geo distance ready**.
+
+---
+
+## 1) Supabase: new pilot project + clean serving contract
+
+**Created:** new Supabase project `patientmatch-pilot`.
+
+**Serving tables (pilot):**
+
+* `public.trials`
+
+  * Stores the serving row per trial: `nct_id`, `title`, `status/status_bucket`, `conditions`, `states_list`, `site_count_us`, plus the key payload `questionnaire_json` (PMQ v10) and metadata (`build_tag`, `readiness`, `quality_score/flags`).
+  * RLS: public read enabled.
+* `public.trial_sites`
+
+  * Stores per-trial site rows for the pilot cohort: `(nct_id, site_key)` primary key plus `facility_name`, `city`, `state_code`, `zip5`, and **lat/lon**.
+  * RLS: public read enabled.
+
+**Outcome:** frontend can now treat Supabase as a clean “serving DB” without the old table zoo.
+
+---
+
+## 2) ct_project: pipeline updates and reproducible geo primitives
+
+### A) Status normalization fix (put truth in data, not uploader)
+
+* Discovered `status_bucket` was missing in `gold.pm_trials_serving`, causing `status_bucket = null` in Supabase.
+* Implemented a fix so `status_bucket` is present at the Gold layer (or at minimum mapped correctly), and updated the Supabase push script accordingly.
+* Also added a `--build_tag` filter to ensure the push uses the correct PMQ version (v10), not older rows.
+
+**Result:** Supabase rows now reflect the correct status fields and correct PMQ build tag.
+
+### B) GeoNames zip centroid integration (origin + destination primitives)
+
+**Added GeoNames reference data to DuckDB:**
+
+* Added `ref.us_zip_centroids` built from GeoNames US postal code file (`US.txt` extracted from `US.zip`).
+* Hooked into the pipeline by adding to `refresh.sql` so the full build remains reproducible.
+
+**Built new Gold table:**
+
+* `gold.pm_trial_sites`
+
+  * ~1,445,640 rows
+  * 93.07% of sites successfully geocoded via ZIP centroid join
+  * Verified with MA examples (Tufts, MGH, Dana-Farber, etc.)
+
+**Why this matters:**
+
+* Gold now contains deterministic site lat/lon (destination coordinates) independent of any user.
+* Distance calculations remain user-dependent and will be computed after (frontend/server/RPC).
+
+### C) Supabase push enhancements
+
+* Re-pushed trials with a deterministic build tag filter (`pmq_v10_no_preg_for_male_2025_12_22`) to guarantee the pilot dataset matches the current PMQ generation.
+* Added support to push site rows for the selected cohort into `public.trial_sites` (rather than pushing all 1.4M rows).
+
+**Outcome:** Supabase pilot now contains:
+
+* trial rows + questionnaire JSON (v10)
+* site rows with lat/lon for the same cohort
+
+---
+
+## 3) patientmatch frontend: major refactor to PMQ-first rendering
+
+### A) Switched Screener to “Direct Injection” only
+
+* Refactored `Screener.tsx` so it relies **exclusively** on:
+
+  * `precalculatedQuestions`
+  * `initialAnswers`
+* Deleted/removed all legacy dependencies:
+
+  * no `criteria_json` parsing
+  * no old model pipeline
+  * no phrasebook usage
+* Added a clear “Configuration Error” render when injected questions are missing.
+* Simplified heading and “why we ask” logic to use injected question fields only.
+
+**Outcome:** the screener UI is now a pure renderer/state machine, not a parser.
+
+### B) PMQ adapter + match-profile dedupe (“double ask” fix)
+
+* Implemented a “Smart Adapter” that:
+
+  * converts `questionnaire_json` → the UI question format expected by the screener
+  * filters out any questions already answered globally in `/match` (age, sex, zip, diagnosis, etc.)
+  * returns `{ uiQuestions, initialAnswers }` so the trial screener uses the global answers without re-asking
+* Updated trial screen route to fetch from the new serving contract (`public.trials`) and pass injected questions + initial answers to Screener.
+
+**Outcome:** the trial-specific screener no longer repeats global intake questions.
+
+### C) Legacy cleanup (not quarantined)
+
+* Deleted large amounts of unused/obsolete code after the migration:
+
+  * old parsing/model/evaluation paths tied to `criteria_json`
+  * dead routes and unused plumbing
+* Kept only what’s needed to render questionnaires and maintain the match profile flow.
+
+**Outcome:** repo is now materially simpler and less confusing for future agent work.
+
+### D) Verified end-to-end UI functionality
+
+* Can successfully load and render trial-specific questionnaires via:
+
+  * `/trial/[nct_id]/screen`
+* Confirmed the screen works with PMQ v10 and injected questions/answers only.
+
+---
+
+## 4) Current state
+
+### Working
+
+* Full pipeline loop:
+
+  * AACT → DuckDB Bronze/Silver/Gold → PMQ generation (v10) → Supabase pilot upsert → Next.js renders trial questionnaires
+* Trial sites in Supabase pilot with lat/lon are available for distance logic.
+* Screener is simplified and robust: no hidden dependencies, clear error state.
+* Global intake → trial screener dedupe is implemented (single source of truth for shared answers).
+
+### Next up (immediate)
+
+* Add `public.zip_centroids` to Supabase (push `ref.us_zip_centroids`) so the frontend can resolve patient ZIP → lat/lon.
+* Implement distance sorting:
+
+  * server-side for MVP (compute nearest site per trial)
+  * optional later RPC for scalable list sorting/filtering
+
+---
+
+## 5) Context file updates to do now (so docs stop lying)
+
+### Update / replace
+
+* `AGENTS.md`: rewrite to reflect “frontend storefront + Supabase serving contract” and explicitly state ingestion lives in ct_project.
+* Any docs referencing:
+
+  * `criteria_json_contract.md`
+  * FastAPI `api/` prototype
+  * `data_engine/` CT.gov ingestion
+  * old Supabase table sprawl and matching/evaluation paths
+
+### Add / rename
+
+* `docs/serving_contract.md` (new)
+
+  * define `public.trials` and `public.trial_sites`
+  * define required fields + versioning (`build_tag`, `readiness`)
+* `docs/pmq_contract.md` (optional)
+
+  * define expected PMQ JSON shape used by adapter
+* `docs/geo_contract.md` (optional)
+
+  * define site coordinate table + zip centroid lookup expectations
+
+---
+
+## 6) Key decisions logged
+
+* **Direct Injection Pattern** chosen over coercing PMQ into legacy `criteria_json`.
+* **Single source of truth for global profile** (avoid double-asking and conflicting truth).
+* **Geo primitives live in Gold** (lat/lon for sites), while **distance is computed after** (user-dependent).
+* **Deletion over quarantine** for legacy code to prevent confusion and long-lived debt.
+
+---
+
+If you want, paste a quick list of the context files you rely on most (AGENTS.md, README, docs/*, etc.) and I’ll tell you exactly what to delete vs rewrite and provide updated drafts for each.

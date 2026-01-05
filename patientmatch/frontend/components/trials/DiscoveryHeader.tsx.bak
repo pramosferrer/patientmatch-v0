@@ -1,0 +1,369 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { X } from 'lucide-react';
+import { updateProfileBatch } from '@/app/actions';
+import type { ProfileCookie } from '@/shared/profileCookie';
+import { toConditionLabel } from '@/shared/conditions-normalize';
+
+type DiscoveryHeaderProps = {
+    condition?: string;
+    zip?: string;
+    profile: ProfileCookie | null;
+    totalCount: number;
+};
+
+const DISTANCE_OPTIONS = [10, 25, 50, 100];
+
+export default function DiscoveryHeader({ condition, zip, profile, totalCount }: DiscoveryHeaderProps) {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+
+    const [age, setAge] = useState<string>(profile?.age?.toString() || '');
+    const [sex, setSex] = useState<string>(profile?.sex || '');
+    const [distance, setDistance] = useState<number>(
+        profile?.radius || parseInt(searchParams.get('radius') || '50')
+    );
+    const [zipInput, setZipInput] = useState<string>(zip || '');
+    const [conditionSearch, setConditionSearch] = useState<string>('');
+    const [allConditions, setAllConditions] = useState<{ slug: string; label: string }[]>([]);
+    const [isLoadingConditions, setIsLoadingConditions] = useState(false);
+
+    // Fetch conditions from API on mount
+    useEffect(() => {
+        async function fetchConditions() {
+            setIsLoadingConditions(true);
+            try {
+                const response = await fetch('/api/conditions/suggestions?query=');
+                if (response.ok) {
+                    const data = await response.json();
+                    setAllConditions(data);
+                }
+            } catch (error) {
+                console.error('Failed to fetch conditions:', error);
+            } finally {
+                setIsLoadingConditions(false);
+            }
+        }
+        fetchConditions();
+    }, []);
+
+    const filteredConditions = conditionSearch
+        ? allConditions.filter(c =>
+            c.label.toLowerCase().includes(conditionSearch.toLowerCase())
+        )
+        : allConditions;
+
+    const displayCondition = condition ? toConditionLabel(condition) : 'All Conditions';
+    const displayZip = zip || 'Nationwide';
+    const displayDistance = distance;
+
+    // Build patient descriptor for grammatically correct sentence
+    const patientDescriptor = (() => {
+        const ageText = profile?.age ? `${profile.age}-year-old` : '';
+        const sexText = profile?.sex ? (profile.sex === 'male' ? 'male' : profile.sex === 'female' ? 'female' : '') : '';
+
+        if (ageText && sexText) {
+            return `a ${ageText} ${sexText}`;
+        } else if (ageText) {
+            return `a ${ageText} person`;
+        } else if (sexText) {
+            return `a ${sexText} person`;
+        }
+        return 'anyone';
+    })();
+
+    const handleAgeUpdate = () => {
+        if (age) {
+            const ageNum = parseInt(age);
+            if (!isNaN(ageNum) && ageNum >= 0 && ageNum <= 120) {
+                updateProfileBatch({ age: ageNum }).catch(console.error);
+            }
+        } else {
+            updateProfileBatch({ age: undefined }).catch(console.error);
+        }
+    };
+
+    const handleSexUpdate = (value: string) => {
+        setSex(value);
+        updateProfileBatch({ sex: value as 'male' | 'female' | 'other' }).catch(console.error);
+    };
+
+    const handleDistanceUpdate = (values: number[]) => {
+        const newDistance = values[0];
+        setDistance(newDistance);
+        updateProfileBatch({ radius: newDistance }).catch(console.error);
+
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('radius', newDistance.toString());
+        params.delete('page');
+        router.replace(`/trials?${params.toString()}`, { scroll: false });
+    };
+
+    const handleZipUpdate = () => {
+        const params = new URLSearchParams(searchParams.toString());
+        if (zipInput) {
+            params.set('zip', zipInput);
+        } else {
+            params.delete('zip');
+        }
+        params.delete('page');
+        router.push(`/trials?${params.toString()}`);
+    };
+
+    const handleConditionChange = (conditionSlug: string) => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('condition', conditionSlug);
+        params.delete('page');
+        router.push(`/trials?${params.toString()}`);
+    };
+
+    const handleClearCondition = () => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete('condition');
+        params.delete('page');
+        router.push(`/trials?${params.toString()}`);
+    };
+
+    const handleClearZip = () => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete('zip');
+        params.delete('page');
+        router.push(`/trials?${params.toString()}`);
+    };
+
+    const handleClearProfile = async () => {
+        await updateProfileBatch({ age: null, sex: null });
+        setAge('');
+        setSex('');
+        router.refresh();
+    };
+
+    const handleClearDistance = () => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete('radius');
+        params.delete('page');
+        router.push(`/trials?${params.toString()}`);
+    };
+
+    const handleClearAll = async () => {
+        await updateProfileBatch({ age: null, sex: null, radius: null });
+        setAge('');
+        setSex('');
+        setDistance(50);
+        router.push('/trials');
+    };
+
+    const distanceToIndex = (dist: number) => {
+        const index = DISTANCE_OPTIONS.indexOf(dist);
+        return index >= 0 ? index : 1;
+    };
+
+    const hasActiveFilters = condition || zip || profile?.age || profile?.sex || (distance !== 50);
+
+    return (
+        <div className="sticky top-16 z-20 bg-white border-b border-slate-100 shadow-sm px-4 py-3">
+            <div className="pm-container">
+                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+                    <span>Matching for</span>
+
+                    {/* Condition Trigger - Token Style */}
+                    <div className="flex items-center gap-1">
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" className="h-auto px-2 py-1 font-semibold text-slate-900 bg-slate-50 hover:bg-slate-100 hover:text-rose-600 rounded-md transition-colors">
+                                    {displayCondition}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-80 bg-white border border-slate-200 shadow-lg">
+                                <div className="space-y-3">
+                                    <h4 className="font-semibold text-sm">Change Condition</h4>
+                                    <Input
+                                        type="text"
+                                        placeholder="Search conditions..."
+                                        value={conditionSearch}
+                                        onChange={(e) => setConditionSearch(e.target.value)}
+                                        className="w-full"
+                                    />
+                                    <div className="max-h-60 overflow-y-auto space-y-1">
+                                        {isLoadingConditions ? (
+                                            <p className="text-sm text-slate-500 text-center py-4">Loading conditions...</p>
+                                        ) : filteredConditions.length > 0 ? (
+                                            filteredConditions.slice(0, 10).map((cond) => (
+                                                <button
+                                                    key={cond.slug}
+                                                    onClick={() => handleConditionChange(cond.slug)}
+                                                    className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-slate-100 transition-colors"
+                                                >
+                                                    {cond.label}
+                                                </button>
+                                            ))
+                                        ) : (
+                                            <p className="text-sm text-slate-500 text-center py-4">No conditions found</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                        {condition && (
+                            <button
+                                onClick={handleClearCondition}
+                                className="p-0.5 hover:bg-slate-200 rounded transition-colors"
+                                aria-label="Clear condition filter"
+                            >
+                                <X size={14} className="text-slate-500" />
+                            </button>
+                        )}
+                    </div>
+
+                    <span>near</span>
+
+                    {/* ZIP Trigger - Token Style */}
+                    <div className="flex items-center gap-1">
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" className="h-auto px-2 py-1 font-semibold text-slate-900 bg-slate-50 hover:bg-slate-100 hover:text-rose-600 rounded-md transition-colors">
+                                    {displayZip}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-80 bg-white border border-slate-200 shadow-lg">
+                                <div className="space-y-3">
+                                    <Label htmlFor="zip-input" className="text-sm font-semibold">ZIP Code</Label>
+                                    <div className="flex gap-2">
+                                        <Input
+                                            id="zip-input"
+                                            type="text"
+                                            value={zipInput}
+                                            onChange={(e) => setZipInput(e.target.value)}
+                                            placeholder="Enter ZIP"
+                                            className="flex-1"
+                                        />
+                                        <Button size="sm" onClick={handleZipUpdate}>
+                                            Update
+                                        </Button>
+                                    </div>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                        {zip && (
+                            <button
+                                onClick={handleClearZip}
+                                className="p-0.5 hover:bg-slate-200 rounded transition-colors"
+                                aria-label="Clear ZIP filter"
+                            >
+                                <X size={14} className="text-slate-500" />
+                            </button>
+                        )}
+                    </div>
+
+                    <span>for</span>
+
+                    {/* Age/Sex Trigger - Token Style */}
+                    <div className="flex items-center gap-1">
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" className="h-auto px-2 py-1 font-semibold text-slate-900 bg-slate-50 hover:bg-slate-100 hover:text-rose-600 rounded-md transition-colors">
+                                    {patientDescriptor}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-80 bg-white border border-slate-200 shadow-lg">
+                                <div className="space-y-4">
+                                    <div>
+                                        <Label htmlFor="age-popover" className="text-sm font-semibold">Age</Label>
+                                        <div className="flex gap-2 mt-2">
+                                            <Input
+                                                id="age-popover"
+                                                type="number"
+                                                min="0"
+                                                max="120"
+                                                value={age}
+                                                onChange={(e) => setAge(e.target.value)}
+                                                placeholder="Enter age"
+                                                className="flex-1"
+                                            />
+                                            <Button size="sm" onClick={handleAgeUpdate}>
+                                                Set
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <Label className="text-sm font-semibold">Sex</Label>
+                                        <RadioGroup value={sex} onValueChange={handleSexUpdate} className="flex gap-4 mt-2">
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="male" id="male-pop" />
+                                                <Label htmlFor="male-pop" className="font-normal cursor-pointer">Male</Label>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="female" id="female-pop" />
+                                                <Label htmlFor="female-pop" className="font-normal cursor-pointer">Female</Label>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="other" id="other-pop" />
+                                                <Label htmlFor="other-pop" className="font-normal cursor-pointer">Other</Label>
+                                            </div>
+                                        </RadioGroup>
+                                    </div>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                        {(profile?.age || profile?.sex) && (
+                            <button
+                                onClick={handleClearProfile}
+                                className="p-0.5 hover:bg-slate-200 rounded transition-colors"
+                                aria-label="Clear age/sex filter"
+                            >
+                                <X size={14} className="text-slate-500" />
+                            </button>
+                        )}
+                    </div>
+
+                    <span>within</span>
+
+                    {/* Distance Trigger - Token Style */}
+                    <div className="flex items-center gap-1">
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" className="h-auto px-2 py-1 font-semibold text-slate-900 bg-slate-50 hover:bg-slate-100 hover:text-rose-600 rounded-md transition-colors">
+                                    {displayDistance} miles
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-80 bg-white border border-slate-200 shadow-lg">
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-sm font-semibold">Distance</Label>
+                                        <span className="text-sm font-bold text-rose-600">{distance} miles</span>
+                                    </div>
+                                    <Slider
+                                        value={[distanceToIndex(distance)]}
+                                        onValueChange={(values) => {
+                                            const newDistance = DISTANCE_OPTIONS[values[0]];
+                                            handleDistanceUpdate([newDistance]);
+                                        }}
+                                        min={0}
+                                        max={DISTANCE_OPTIONS.length - 1}
+                                        step={1}
+                                        className="w-full"
+                                    />
+                                    <div className="flex justify-between text-xs text-slate-500">
+                                        {DISTANCE_OPTIONS.map((dist) => (
+                                            <span key={dist}>{dist}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+
+                        <span className="text-slate-400">•</span>
+                        <span className="font-semibold text-slate-900">{totalCount} studies</span>
+                    </div>
+                </div>
+            </div>
+            );
+}

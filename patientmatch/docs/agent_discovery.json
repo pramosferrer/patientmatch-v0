@@ -1,0 +1,370 @@
+{
+  "section_1_repo_stack_inventory": {
+    "monorepo_folders": [
+      { "folder": "frontend", "purpose": "Next.js App Router UI", "reference": "PROJECT_OVERVIEW.md:6" },
+      { "folder": "api", "purpose": "FastAPI prototype + SQLAlchemy models", "reference": "PROJECT_OVERVIEW.md:7" },
+      { "folder": "data_engine", "purpose": "ClinicalTrials.gov ingestion and Supabase upserts", "reference": "PROJECT_OVERVIEW.md:8" },
+      { "folder": "e2e", "purpose": "Playwright scenarios", "reference": "PROJECT_OVERVIEW.md:10" },
+      { "folder": "scripts", "purpose": "Dev branch + ship helpers", "reference": "scripts/ship.sh:1" }
+    ],
+    "frameworks_languages": [
+      { "name": "Next.js 15 App Router (TypeScript)", "reference": "frontend/package.json:6" },
+      { "name": "FastAPI + SQLAlchemy (Python)", "reference": "api/app/main.py:59" },
+      { "name": "Supabase Postgres", "reference": "frontend/app/trials/page.tsx:166" },
+      { "name": "Python data engine with OpenAI/httpx", "reference": "data_engine/requirements.txt:1" }
+    ],
+    "package_managers": [
+      { "ecosystem": "npm", "detail": "Next.js build scripts", "reference": "frontend/package.json:6" },
+      { "ecosystem": "pip", "detail": "FastAPI requirements", "reference": "api/requirements.txt:1" },
+      { "ecosystem": "pip", "detail": "Data engine requirements", "reference": "data_engine/requirements.txt:1" }
+    ],
+    "runtime_entry_points": [
+      { "entry": "Next root layout", "reference": "frontend/app/layout.tsx:1" },
+      { "entry": "Next home page", "reference": "frontend/app/page.tsx:1" },
+      { "entry": "FastAPI main", "reference": "api/app/main.py:59" },
+      { "entry": "Data engine Supabase writer", "reference": "data_engine/supabase_writer.py:1" },
+      { "entry": "Backfill orchestration", "reference": "data_engine/backfill_missing_trials.py:1" }
+    ]
+  },
+  "section_2_frontend_anatomy": {
+    "app_routes_overview": [
+      { "route": "/", "file": "frontend/app/page.tsx:1", "purpose": "Marketing home" },
+      { "route": "/match/wizard", "file": "frontend/app/match/wizard/page.tsx:1", "purpose": "Match intake wizard" },
+      { "route": "/trials", "file": "frontend/app/trials/page.tsx:1", "purpose": "Trial search & shortlist" },
+      { "route": "/trial/[nct_id]/screen", "file": "frontend/app/trial/[nct_id]/screen/page.tsx:1", "purpose": "Eligibility screener" },
+      { "route": "/conditions/[slug]", "file": "frontend/app/conditions/[slug]/page.tsx:1", "purpose": "Condition landing" },
+      { "route": "/refer", "file": "frontend/app/refer/page.tsx:1", "purpose": "Physician referral form" },
+      { "route": "/list-trial", "file": "frontend/app/list-trial/page.tsx:1", "purpose": "Site submission form" },
+      { "route": "/debug", "file": "frontend/app/debug/page.tsx:1", "purpose": "Service-role diagnostics" }
+    ],
+    "api_routes_summary": [
+      { "route": "/api/trials", "methods": ["GET"], "reference": "frontend/app/api/trials/route.ts:1" },
+      { "route": "/api/match", "methods": ["POST", "GET 405"], "reference": "frontend/app/api/match/route.ts:1" },
+      { "route": "/api/prefilter", "methods": ["POST"], "reference": "frontend/app/api/prefilter/route.js:1" },
+      { "route": "/api/evaluate", "methods": ["POST"], "reference": "frontend/app/api/evaluate/route.js:1" },
+      { "route": "/api/extract_profile", "methods": ["POST"], "reference": "frontend/app/api/extract_profile/route.js:1" },
+      { "route": "/api/leads", "methods": ["POST"], "reference": "frontend/app/api/leads/route.ts:34" },
+      { "route": "/api/refer", "methods": ["POST"], "reference": "frontend/app/api/refer/route.ts:22" },
+      { "route": "/api/list-trial", "methods": ["POST"], "reference": "frontend/app/api/list-trial/route.ts:41" },
+      { "route": "/api/analytics", "methods": ["POST"], "reference": "frontend/app/api/analytics/route.js:1" },
+      { "route": "/api/conditions", "methods": ["GET", "POST"], "reference": "frontend/app/api/conditions/route.ts:1" },
+      { "route": "/api/revalidate", "methods": ["POST", "GET 405"], "reference": "frontend/app/api/revalidate/route.ts:1" },
+      { "route": "/api/revalidate/conditions", "methods": ["POST", "GET"], "reference": "frontend/app/api/revalidate/conditions/route.ts:1" }
+    ],
+    "component_libraries": [
+      { "library": "Tailwind CSS (custom tokens + safelist)", "reference": "frontend/tailwind.config.js:1" },
+      { "library": "shadcn/ui via Radix primitives", "reference": "frontend/components/ui/button.tsx:1" },
+      { "library": "Framer Motion", "reference": "frontend/components/CTA.tsx:4" },
+      { "library": "lucide-react icons", "reference": "frontend/app/layout.tsx:17" },
+      { "library": "Leaflet/react-leaflet map widgets", "reference": "frontend/app/layout.tsx:5" }
+    ],
+    "global_styles": [
+      { "detail": "Design tokens and aurora animations", "reference": "frontend/app/globals.css:4" },
+      { "detail": "Aurora background component", "reference": "frontend/components/AuroraBG.tsx:1" }
+    ],
+    "feature_flags": [
+      { "flag": "FEATURE_ALLOW_WRITES", "scope": "server-side write guard", "reference": "frontend/app/api/leads/route.ts:34" },
+      { "flag": "REVALIDATE_SECRET", "scope": "cache invalidation auth", "reference": "frontend/app/api/revalidate/conditions/route.ts:6" }
+    ]
+  },
+  "section_3_data_backend_boundaries": {
+    "supabase_clients": [
+      { "name": "getSupabaseBrowser", "type": "anon client for browser", "reference": "frontend/lib/supabaseClient.ts:1" },
+      { "name": "getServerSupabase", "type": "server anon client (SSR)", "reference": "frontend/lib/supabaseServer.ts:1" },
+      { "name": "getServiceClient", "type": "service-role admin (server-only)", "reference": "frontend/lib/supabaseAdmin.ts:1" },
+      { "name": "matchTrials client", "type": "anon client inside scoring", "reference": "frontend/lib/matchEngine.ts:468" }
+    ],
+    "supabase_tables": [
+      { "table": "trials", "ops": ["select", "contains", "overlaps"], "reference": "frontend/app/trials/page.tsx:166" },
+      { "table": "patient_leads", "ops": ["insert"], "reference": "frontend/app/api/leads/route.ts:71" },
+      { "table": "physician_referrals", "ops": ["insert"], "reference": "frontend/app/api/refer/route.ts:31" },
+      { "table": "trial_submissions", "ops": ["insert"], "reference": "frontend/app/api/list-trial/route.ts:50" },
+      { "table": "events", "ops": ["insert"], "reference": "frontend/app/api/analytics/route.js:28" }
+    ],
+    "fastapi_service": {
+      "endpoints": [
+        { "path": "/", "method": "GET", "reference": "api/app/main.py:80" },
+        { "path": "/match", "method": "POST", "reference": "api/app/main.py:88" }
+      ],
+      "database_model": { "table": "leads", "reference": "api/app/models.py:5" }
+    },
+    "shared_data_fields": [
+      { "field": "criteria_json", "context": "trial matching + screener", "reference": "frontend/app/trial/[nct_id]/screen/page.tsx:24" },
+      { "field": "condition_slugs", "context": "catalog + filtering", "reference": "frontend/shared/conditions.catalog.ts:177" }
+    ]
+  },
+  "section_4_matching_criteria": {
+    "criteria_flow": [
+      { "step": "Data engine builds criteria_json + hash", "reference": "data_engine/parse_trial.py:724" },
+      { "step": "Supabase writer upserts trial JSON", "reference": "data_engine/supabase_writer.py:65" },
+      { "step": "Match engine adapts criteria for scoring", "reference": "frontend/lib/matchEngine.ts:204" },
+      { "step": "Screener renders UI questions", "reference": "frontend/components/Screener.tsx:102" }
+    ],
+    "matching_layers": [
+      { "layer": "Prefilter preview", "reference": "frontend/app/api/prefilter/route.js:128" },
+      { "layer": "Full match scoring", "reference": "frontend/app/api/match/route.ts:52" },
+      { "layer": "Client shortlist adjustments", "reference": "frontend/app/trials/page.client.tsx:85" },
+      { "layer": "Lead enrichment", "reference": "frontend/components/LeadForm.tsx:62" }
+    ],
+    "utilities": [
+      { "name": "criteria adapter", "reference": "frontend/lib/criteria/adapter.ts:1" },
+      { "name": "criteria normalization", "reference": "frontend/lib/criteria/normalize.ts:1" },
+      { "name": "evaluation engine", "reference": "frontend/lib/matching/evaluator.ts:1" }
+    ]
+  },
+  "section_5_data_engine": {
+    "scripts": [
+      { "script": "backfill_missing_trials.py", "purpose": "LLM-assisted criteria backfill", "reference": "data_engine/backfill_missing_trials.py:1" },
+      { "script": "backfill_condition_slugs.py", "purpose": "Normalize condition slugs with --confirm", "reference": "data_engine/backfill_condition_slugs.py:1" },
+      { "script": "parse_trial.py", "purpose": "Parse trial metadata + heuristics", "reference": "data_engine/parser.py:1" },
+      { "script": "supabase_writer.py", "purpose": "REST upsert helper", "reference": "data_engine/supabase_writer.py:1" }
+    ],
+    "ctgov_client": { "reference": "data_engine/ctgov_client.py:1" },
+    "outputs": [
+      { "artifact": "criteria JSON files", "location": "data_engine/out/criteria/", "reference": "data_engine/out/criteria/NCT00001159_criteria.json" },
+      { "artifact": "backfill logs", "location": "data_engine/out/backfill_criteria.log", "reference": "data_engine/out/backfill_criteria.log" }
+    ],
+    "dependencies": [
+      { "package": "httpx", "reference": "data_engine/requirements.txt:1" },
+      { "package": "tenacity", "reference": "data_engine/requirements.txt:2" },
+      { "package": "openai", "reference": "data_engine/requirements.txt:7" },
+      { "package": "supabase", "reference": "data_engine/requirements.txt:5" }
+    ]
+  },
+  "section_6_security_hipaa": {
+    "write_guards": [
+      { "path": "frontend/app/api/leads/route.ts:34", "description": "Reject POST unless FEATURE_ALLOW_WRITES", "table": "patient_leads" },
+      { "path": "frontend/app/api/refer/route.ts:22", "description": "Referral writes gated", "table": "physician_referrals" },
+      { "path": "frontend/app/api/list-trial/route.ts:41", "description": "Trial submission writes", "table": "trial_submissions" },
+      { "path": "frontend/app/api/analytics/route.js:6", "description": "Analytics insert gating", "table": "events" }
+    ],
+    "pii_controls": [
+      { "detail": "AES-256-GCM encryption using PII_SECRET", "reference": "frontend/app/api/leads/route.ts:19" },
+      { "detail": "Lead form consent enforcement", "reference": "frontend/components/LeadForm.tsx:114" }
+    ],
+    "security_headers": [
+      { "header": "Content-Security-Policy", "reference": "frontend/next.config.mjs:5" },
+      { "header": "Strict-Transport-Security", "reference": "frontend/next.config.mjs:22" },
+      { "header": "Permissions-Policy", "reference": "frontend/next.config.mjs:20" }
+    ],
+    "rate_limiting": [
+      { "implementation": "Upstash Redis token bucket with in-memory fallback", "reference": "frontend/lib/rateLimitStore.ts:1" },
+      { "usage": "evaluate API", "reference": "frontend/app/api/evaluate/route.js:1" },
+      { "usage": "prefilter API", "reference": "frontend/app/api/prefilter/route.js:1" },
+      { "usage": "extract_profile API", "reference": "frontend/app/api/extract_profile/route.js:1" },
+      { "usage": "match API", "reference": "frontend/app/api/match/route.ts:353" }
+    ]
+  },
+  "section_7_validation_error_testing": {
+    "validation_schemas": [
+      { "endpoint": "/api/leads", "reference": "frontend/app/api/leads/route.ts:9" },
+      { "endpoint": "/api/refer", "reference": "frontend/app/api/refer/route.ts:9" },
+      { "endpoint": "/api/list-trial", "reference": "frontend/app/api/list-trial/route.ts:9" },
+      { "endpoint": "/api/match", "reference": "frontend/app/api/match/route.ts:38" },
+      { "endpoint": "/api/prefilter", "reference": "frontend/app/api/prefilter/route.js:5" },
+      { "endpoint": "/api/evaluate", "reference": "frontend/app/api/evaluate/route.js:5" },
+      { "component": "LeadForm client validation", "reference": "frontend/components/LeadForm.tsx:15" }
+    ],
+    "error_handling_examples": [
+      { "type": "structured", "reference": "frontend/app/api/leads/route.ts:96" },
+      { "type": "weak", "reference": "frontend/app/api/prefilter/route.js:155" }
+    ],
+    "testing_assets": [
+      { "test": "matchEngine unit tests", "reference": "frontend/lib/matchEngine.test.ts:1" },
+      { "test": "criteria adapter tests", "reference": "frontend/lib/criteria/adapter.test.ts:1" },
+      { "test": "criteria normalize tests", "reference": "frontend/lib/criteria/normalize.test.ts:1" },
+      { "test": "Playwright trials spec", "reference": "e2e/trials.spec.ts:1" },
+      { "test": "Data engine condition processing", "reference": "data_engine/test_condition_processing.py:1" },
+      { "test": "Data engine enhanced extraction", "reference": "data_engine/test_enhanced_extraction.py:1" },
+      { "test": "Data engine realistic extraction", "reference": "data_engine/test_realistic_extraction.py:1" }
+    ],
+    "gaps": [
+      { "gap": "No automated coverage for Supabase write APIs", "reference": "frontend/app/api/leads/route.ts:71" },
+      { "gap": "Matching API relies on live Supabase state; no mocks present", "reference": "frontend/app/api/match/route.ts:82" }
+    ]
+  },
+  "section_8_build_ci_cd": {
+    "npm_scripts": [
+      { "script": "dev", "command": "next dev", "reference": "frontend/package.json:8" },
+      { "script": "build", "command": "next build", "reference": "frontend/package.json:9" },
+      { "script": "start", "command": "next start", "reference": "frontend/package.json:10" },
+      { "script": "lint", "command": "next lint", "reference": "frontend/package.json:11" },
+      { "script": "test:e2e", "command": "playwright test", "reference": "frontend/package.json:12" }
+    ],
+    "ci_workflows": [
+      { "workflow": "Lighthouse CI", "reference": ".github/workflows/lighthouse.yml:1" }
+    ],
+    "configs": [
+      { "file": "lighthouserc.json", "reference": "lighthouserc.json:2" },
+      { "file": "playwright.config.ts", "reference": "playwright.config.ts:1" }
+    ],
+    "deployment_notes": [
+      { "note": "No vercel.json; rely on Next defaults", "reference": "frontend/next.config.mjs:1" },
+      { "note": "Scripts automate git flow", "reference": "scripts/dev-branch.sh:1" }
+    ]
+  },
+  "section_9_performance": {
+    "costly_patterns": [
+      { "pattern": "matchTrials selects up to 500 rows incl. criteria_json", "reference": "frontend/lib/matchEngine.ts:503" },
+      { "pattern": "Trials page selects large payloads for list view", "reference": "frontend/app/trials/page.tsx:166" },
+      { "pattern": "getTrialCounts performs sequential selects per condition", "reference": "frontend/lib/getTrialCounts.ts:11" }
+    ],
+    "libraries_to_optimize": [
+      { "library": "Leaflet CSS imported globally", "reference": "frontend/app/layout.tsx:5" },
+      { "library": "Framer Motion widely used", "reference": "frontend/components/CTA.tsx:4" }
+    ],
+    "caching_notes": [
+      { "note": "Trials page is force-dynamic/noStore", "reference": "frontend/app/trials/page.tsx:1" },
+      { "note": "Condition catalog cached via unstable_cache (12h)", "reference": "frontend/shared/conditions.catalog.ts:310" }
+    ],
+    "db_index_uncertainty": [
+      { "comment": "No migrations or index notes for JSONB filters", "reference": "repository search: criteria_json" }
+    ]
+  },
+  "section_10_ux_content": {
+    "tone_references": [
+      { "file": "frontend/app/match/MatchPageClient.tsx:33", "note": "Affirmations and reassurances" },
+      { "file": "frontend/components/Screener.tsx:215", "note": "Why/reassurance messaging per question" },
+      { "file": "frontend/app/page.tsx:32", "note": "Privacy-forward homepage copy" }
+    ],
+    "progress_indicators": [
+      { "component": "Match wizard progress bar", "reference": "frontend/app/match/MatchPageClient.tsx:632" },
+      { "component": "Screener progress", "reference": "frontend/components/Screener.tsx:276" },
+      { "component": "PatientForm multi-step progress", "reference": "frontend/app/PatientForm.tsx:233" }
+    ],
+    "state_persistence": [
+      { "feature": "Shortlist stored in localStorage", "reference": "frontend/lib/compare/state.ts:20" },
+      { "feature": "Consent + answers stored under STORAGE_KEY", "reference": "frontend/app/match/MatchPageClient.tsx:26" },
+      { "feature": "Geolocation cached", "reference": "frontend/lib/location/distance.ts:20" }
+    ],
+    "patient_facing_copy": [
+      { "component": "LeadForm thank-you messaging", "reference": "frontend/components/LeadForm.tsx:143" },
+      { "component": "Sticky helper CTA", "reference": "frontend/components/trials/StickyHelper.tsx:1" }
+    ]
+  },
+  "section_11_risks": [
+    { "risk": "PII encryption uses empty secret if PII_SECRET unset", "impact": "Encrypted leads become reversible / insecure", "mitigation": "Throw when secret missing; add env validation", "reference": "frontend/app/api/leads/route.ts:19" },
+    { "risk": "Screener logs contain patient answers in console", "impact": "PHI exposure in browser logs or monitoring", "mitigation": "Remove or guard log with NODE_ENV check", "reference": "frontend/app/trials/page.client.tsx:85" },
+    { "risk": "Sequential condition count queries", "impact": "Rate-limit pressure + slow SSR", "mitigation": "Aggregate counts in single Supabase query or RPC", "reference": "frontend/lib/getTrialCounts.ts:11" },
+    { "risk": "Missing Upstash credentials would trigger in-memory fallback", "impact": "Limiter degrades to per-instance protection", "mitigation": "Set UPSTASH_REDIS_REST_URL/TOKEN in production", "reference": "frontend/lib/rateLimitStore.ts:1" },
+    { "risk": "Analytics route accepts arbitrary meta", "impact": "Potential PHI/PII stored without schema", "mitigation": "Validate whitelist of keys before insert", "reference": "frontend/app/api/analytics/route.js:18" }
+  ],
+  "section_12_open_questions": [
+    { "question": "How is FEATURE_ALLOW_WRITES managed across environments?", "reference": "frontend/app/api/leads/route.ts:34" },
+    { "question": "Is FastAPI service still active alongside Next APIs?", "reference": "api/app/main.py:59" },
+    { "question": "What Supabase RLS policies protect trials/leads data?", "reference": "supabase usage throughout" },
+    { "question": "How are OpenAI spend caps enforced when DISABLE_LLM=0?", "reference": "data_engine/backfill_missing_trials.py:27" },
+    { "question": "Should /app/debug be production-restricted?", "reference": "frontend/app/debug/page.tsx:11" },
+    { "question": "Do analytics logs require stricter schema/PII filtering?", "reference": "frontend/app/api/analytics/route.js:18" },
+    { "question": "Can condition count queries be cached server-side?", "reference": "frontend/lib/getTrialCounts.ts:11" },
+    { "question": "Are CSP allowances sufficient for future assets?", "reference": "frontend/next.config.mjs:5" },
+    { "question": "Should criteria_json schema be versioned formally?", "reference": "docs/criteria_json_contract.md:3" },
+    { "question": "Are UPSTASH env vars provisioned across environments?", "reference": "frontend/lib/rateLimitStore.ts:1" }
+  ],
+  "routes": [
+    { "path": "frontend/app/page.tsx", "type": "page", "purpose": "Home marketing" },
+    { "path": "frontend/app/match/wizard/page.tsx", "type": "page", "purpose": "Match wizard" },
+    { "path": "frontend/app/trials/page.tsx", "type": "page", "purpose": "Trial search" },
+    { "path": "frontend/app/trial/[nct_id]/screen/page.tsx", "type": "page", "purpose": "Eligibility screener" },
+    { "path": "frontend/app/conditions/[slug]/page.tsx", "type": "page", "purpose": "Condition detail" },
+    { "path": "frontend/app/refer/page.tsx", "type": "page", "purpose": "Physician referral" },
+    { "path": "frontend/app/list-trial/page.tsx", "type": "page", "purpose": "Research site intake" },
+    { "path": "frontend/app/about/page.tsx", "type": "page", "purpose": "About" },
+    { "path": "frontend/app/resources/how-it-works/page.tsx", "type": "page", "purpose": "How it works" },
+    { "path": "frontend/app/privacy/page.tsx", "type": "page", "purpose": "Privacy policy" },
+    { "path": "frontend/app/terms/page.tsx", "type": "page", "purpose": "Terms" },
+    { "path": "frontend/app/debug/page.tsx", "type": "page", "purpose": "Service-role diagnostics" }
+  ],
+  "api_handlers": [
+    { "path": "frontend/app/api/trials/route.ts", "methods": ["GET"] },
+    { "path": "frontend/app/api/match/route.ts", "methods": ["POST", "GET 405"] },
+    { "path": "frontend/app/api/prefilter/route.js", "methods": ["POST"] },
+    { "path": "frontend/app/api/evaluate/route.js", "methods": ["POST"] },
+    { "path": "frontend/app/api/extract_profile/route.js", "methods": ["POST"] },
+    { "path": "frontend/app/api/leads/route.ts", "methods": ["POST"] },
+    { "path": "frontend/app/api/refer/route.ts", "methods": ["POST"] },
+    { "path": "frontend/app/api/list-trial/route.ts", "methods": ["POST"] },
+    { "path": "frontend/app/api/analytics/route.js", "methods": ["POST"] },
+    { "path": "frontend/app/api/conditions/route.ts", "methods": ["GET", "POST"] },
+    { "path": "frontend/app/api/revalidate/route.ts", "methods": ["POST", "GET 405"] },
+    { "path": "frontend/app/api/revalidate/conditions/route.ts", "methods": ["POST", "GET"] }
+  ],
+  "db_tables": [
+    { "name": "trials", "operations": ["select", "contains", "overlaps"], "references": ["frontend/app/trials/page.tsx:166", "frontend/lib/matchEngine.ts:489"] },
+    { "name": "patient_leads", "operations": ["insert"], "references": ["frontend/app/api/leads/route.ts:71"] },
+    { "name": "physician_referrals", "operations": ["insert"], "references": ["frontend/app/api/refer/route.ts:31"] },
+    { "name": "trial_submissions", "operations": ["insert"], "references": ["frontend/app/api/list-trial/route.ts:50"] },
+    { "name": "events", "operations": ["insert"], "references": ["frontend/app/api/analytics/route.js:28"] },
+    { "name": "leads (FastAPI)", "operations": ["insert"], "references": ["api/app/models.py:5", "api/app/main.py:120"] }
+  ],
+  "env_vars": [
+    { "name": "NEXT_PUBLIC_SUPABASE_URL", "scope": "public", "references": ["frontend/lib/supabaseClient.ts:3", "frontend/next.config.mjs:5"] },
+    { "name": "NEXT_PUBLIC_SUPABASE_ANON_KEY", "scope": "public", "references": ["frontend/lib/supabaseClient.ts:4", "frontend/lib/matchEngine.ts:470"] },
+    { "name": "NEXT_PUBLIC_SITE_URL", "scope": "public", "references": ["frontend/app/layout.tsx:28"] },
+    { "name": "SUPABASE_URL", "scope": "server", "references": ["frontend/lib/supabaseServer.ts:4", "frontend/lib/supabaseAdmin.ts:5", "data_engine/supabase_writer.py:10"] },
+    { "name": "SUPABASE_ANON_KEY", "scope": "server", "references": ["frontend/lib/supabaseServer.ts:5"] },
+    { "name": "SUPABASE_SERVICE_ROLE_KEY", "scope": "server", "references": ["frontend/lib/supabaseAdmin.ts:6", "data_engine/supabase_writer.py:11"] },
+    { "name": "PII_SECRET", "scope": "server", "references": ["frontend/app/api/leads/route.ts:19"] },
+    { "name": "FEATURE_ALLOW_WRITES", "scope": "server flag", "references": ["frontend/app/api/leads/route.ts:34", "frontend/app/api/analytics/route.js:6"] },
+    { "name": "REVALIDATE_SECRET", "scope": "server secret", "references": ["frontend/app/api/revalidate/conditions/route.ts:6"] },
+    { "name": "ALLOW_EMPTY_CRITERIA", "scope": "data_engine", "references": ["data_engine/parse_trial.py:20"] },
+    { "name": "DISABLE_LLM", "scope": "data_engine", "references": ["data_engine/parse_trial.py:23", "data_engine/backfill_missing_trials.py:43"] },
+    { "name": "OPENAI_API_KEY", "scope": "data_engine", "references": ["data_engine/parse_trial.py:33"] }
+  ],
+  "supabase_clients": [
+    { "name": "getSupabaseBrowser", "file": "frontend/lib/supabaseClient.ts:1", "notes": "Browser anon client" },
+    { "name": "getServerSupabase", "file": "frontend/lib/supabaseServer.ts:1", "notes": "Server runtime, anon key fallback" },
+    { "name": "getServiceClient", "file": "frontend/lib/supabaseAdmin.ts:1", "notes": "Service-role key, server-only comment" },
+    { "name": "matchTrials client", "file": "frontend/lib/matchEngine.ts:468", "notes": "Creates anon client inside server route" }
+  ],
+  "write_paths": [
+    { "file": "frontend/app/api/leads/route.ts", "table": "patient_leads", "note": "Encrypts and inserts lead" },
+    { "file": "frontend/app/api/refer/route.ts", "table": "physician_referrals", "note": "Stores physician referral" },
+    { "file": "frontend/app/api/list-trial/route.ts", "table": "trial_submissions", "note": "Captures trial listing submissions" },
+    { "file": "frontend/app/api/analytics/route.js", "table": "events", "note": "Ingests analytics events" }
+  ],
+  "log_sites": [
+    { "file": "frontend/lib/analytics.ts:1", "note": "Client-side analytics fetch; respects Do Not Track" },
+    { "file": "frontend/app/api/analytics/route.js:18", "note": "Logs received events to console + Supabase" },
+    { "file": "frontend/app/trials/page.client.tsx:85", "note": "Console logs screener result (PHI risk)" },
+    { "file": "frontend/shared/conditions.catalog.ts:173", "note": "Console logs catalog build stats" },
+    { "file": "frontend/app/debug/page.tsx:11", "note": "Logs Supabase table counts with service key" }
+  ],
+  "feature_flags": [
+    { "name": "FEATURE_ALLOW_WRITES", "default": "undefined (treated as false)", "usage": ["frontend/app/api/leads/route.ts:34", "frontend/app/api/refer/route.ts:22", "frontend/app/api/list-trial/route.ts:41", "frontend/app/api/analytics/route.js:6"] },
+    { "name": "REVALIDATE_SECRET", "default": "dev-secret-change-in-prod", "usage": ["frontend/app/api/revalidate/conditions/route.ts:6"] },
+    { "name": "DISABLE_LLM", "default": "0", "usage": ["data_engine/backfill_missing_trials.py:43"] },
+    { "name": "ALLOW_EMPTY_CRITERIA", "default": "0", "usage": ["data_engine/parse_trial.py:20"] }
+  ],
+  "tests": [
+    { "path": "frontend/lib/matchEngine.test.ts", "type": "unit" },
+    { "path": "frontend/lib/criteria/adapter.test.ts", "type": "unit" },
+    { "path": "frontend/lib/criteria/normalize.test.ts", "type": "unit" },
+    { "path": "e2e/trials.spec.ts", "type": "e2e" },
+    { "path": "data_engine/test_condition_processing.py", "type": "script test" },
+    { "path": "data_engine/test_enhanced_extraction.py", "type": "script test" },
+    { "path": "data_engine/test_realistic_extraction.py", "type": "script test" }
+  ],
+  "ci_workflows": [
+    { "path": ".github/workflows/lighthouse.yml", "purpose": "Lighthouse CI gating performance/accessibility" }
+  ],
+  "risks": [
+    { "title": "PII secret fallback", "impact": "Encrypts with zero key if unset", "reference": "frontend/app/api/leads/route.ts:19" },
+    { "title": "Screener console logging", "impact": "PHI leak", "reference": "frontend/app/trials/page.client.tsx:85" },
+    { "title": "Sequential condition counts", "impact": "Slow SSR + rate limits", "reference": "frontend/lib/getTrialCounts.ts:11" },
+    { "title": "Rate limit fallback", "impact": "Without Upstash envs limiter loses global persistence", "reference": "frontend/lib/rateLimitStore.ts:1" },
+    { "title": "Analytics meta uncontrolled", "impact": "Unexpected PHI ingestion", "reference": "frontend/app/api/analytics/route.js:18" }
+  ],
+  "quick_wins": [
+    "Fail fast when PII_SECRET missing and document requirement",
+    "Remove screener console logging in production builds",
+    "Batch condition counts instead of sequential selects",
+    "Adopt shared rate limiter (Redis/Edge) for public APIs",
+    "Whitelist analytics payload fields before insert",
+    "Lazy-load heavy animation/map libraries",
+    "Add tests covering /api/leads validation/encryption",
+    "Instrument data-engine scripts to surface error stats",
+    "Automate check ensuring FEATURE_ALLOW_WRITES disabled outside prod",
+    "Document Supabase RLS expectations in docs/"
+  ]
+}

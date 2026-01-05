@@ -1,0 +1,252 @@
+'use client';
+
+import React from 'react';
+import Link from "next/link";
+import { logEvent } from '@/lib/analytics';
+import { screenerHref } from '@/lib/urls';
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Brain, Wind, Flame, Stethoscope, FlaskConical, MapPin, UserRound, Bookmark } from "lucide-react";
+import { getConditionIcon, labelFromSlug, FALLBACK_ICON, FALLBACK_CLASS } from "@/shared/conditionMeta";
+import { guessConditionSlug } from "@/shared/guessCondition";
+import { getConditionColors } from "@/shared/colors";
+import AnimatedCard from '@/components/AnimatedCard';
+import AnimatedButton from '@/components/AnimatedButton';
+import {
+  formatAge,
+  formatLocation,
+  formatPhase,
+} from "@/lib/trials/formatters";
+import Image from 'next/image';
+import { toConditionSlug } from "@/shared/conditions-normalize";
+
+type Props = {
+  id?: string;
+  nct_id: string;
+  title: string;
+  summary?: string | null;
+  phase?: string | null;
+  status?: string | null;
+  trial_url?: string;
+  ctgov_url?: string;
+  site_count?: number | null;
+  location_countries?: string[] | null;
+  sponsor?: string | null;
+  condition_slugs?: string[] | null;
+  original_conditions?: string[] | null;
+  primary_condition?: string | null;
+  conditions?: string[] | null;
+  criteria_json?: any[] | null;
+  min_age_years?: number | null;
+  max_age_years?: number | null;
+  gender?: string | null;
+  locations?: any[] | null;
+  country?: string | null;
+  visit_model?: 'remote' | 'hybrid' | 'in_person' | string | null;
+  prefillAnswers?: Record<string, unknown>;
+  distanceMiles?: number | null;
+  qualityScore?: number | null;
+};
+
+
+export default function TrialCard(p: Props) {
+  const normalizedVisitModel =
+    typeof p.visit_model === 'string' ? p.visit_model.toLowerCase() : null;
+  const isRemoteish =
+    normalizedVisitModel === 'remote' || normalizedVisitModel === 'hybrid';
+
+  const derived = guessConditionSlug(p.title, p.original_conditions);
+  const primarySlug = typeof p.primary_condition === 'string'
+    ? toConditionSlug(p.primary_condition)
+    : null;
+  const conditionsSlug =
+    Array.isArray(p.conditions) && p.conditions.length > 0
+      ? toConditionSlug(p.conditions[0]!)
+      : null;
+  const mainSlug =
+    p.condition_slugs?.[0] ??
+    primarySlug ??
+    conditionsSlug ??
+    derived ??
+    null;
+  const { Icon } = getConditionIcon(mainSlug);
+  const SafeIcon = Icon ?? FALLBACK_ICON;
+
+  // Get condition colors from centralized palette
+  const conditionColors = getConditionColors(mainSlug || 'long_covid');
+
+  const conditionLabel =
+    (mainSlug ? labelFromSlug(mainSlug) : null) ??
+    (Array.isArray(p.conditions) ? p.conditions[0] : null) ??
+    p.primary_condition ??
+    p.original_conditions?.[0] ??
+    "Clinical trial";
+  const conditionLower = conditionLabel.toLowerCase();
+  const ConditionGlyph = conditionLower.includes("alzheimer")
+    ? Brain
+    : conditionLower.includes("copd")
+      ? Wind
+      : conditionLower.includes("hidradenitis")
+        ? Flame
+        : Stethoscope;
+
+  // Build facts strip in exact order: Age range • Phase • Sites • Location/Remote • Diagnosis required
+  const facts: Array<{ key: string; label: string; icon: React.ElementType }> = [];
+
+  // Age range
+  const ageLabel = formatAge(p.min_age_years ?? undefined, p.max_age_years ?? undefined);
+  facts.push({ key: "age", label: ageLabel, icon: UserRound });
+
+  // Phase
+  const phaseLabel = p.phase ? (formatPhase(p.phase || undefined) || `Phase ${p.phase}`) : "Phase N/A";
+  facts.push({ key: "phase", label: phaseLabel, icon: FlaskConical });
+
+  // Sites or Distance
+  const siteCount = p.site_count ?? (p.locations?.length || 0);
+
+  // If we have distance, that is the most important metric.
+  if (p.distanceMiles != null) {
+    const distLabel = p.distanceMiles < 10
+      ? `${p.distanceMiles.toFixed(1)} miles away`
+      : `${Math.round(p.distanceMiles)} miles away`;
+    facts.push({ key: "distance", label: distLabel, icon: MapPin });
+  } else {
+    // Fallback to site count if no specific distance
+    if (siteCount > 1) {
+      facts.push({ key: "sites", label: `${siteCount} sites`, icon: MapPin });
+    } else if (siteCount === 1) {
+      facts.push({ key: "sites", label: "1 site", icon: MapPin });
+    }
+  }
+
+  // Location/Remote
+  const siteLocations =
+    Array.isArray(p.locations) && p.locations.length > 0
+      ? (p.locations as Array<{ city?: string; state?: string; country?: string }>)
+      : p.country
+        ? [{ country: p.country }]
+        : undefined;
+
+  const locationLabel = formatLocation(siteLocations, siteCount, isRemoteish);
+  if (locationLabel) {
+    facts.push({ key: "location", label: locationLabel, icon: MapPin });
+  }
+
+  // Convert title to sentence case
+  const sentenceCaseTitle = p.title.charAt(0).toUpperCase() + p.title.slice(1).toLowerCase();
+
+  return (
+    <AnimatedCard className={`flex h-full flex-col p-4 border-l-4 ${conditionColors.border} rounded-2xl`}>
+      {/* Top row: condition chip + CTG icon */}
+      {/* Top row: Condition Chip + Match Quality + CTG Icon */}
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Condition Chip */}
+          <div className={`flex items-center gap-2 px-2 py-1 rounded-xl ${conditionColors.bg}`}>
+            {mainSlug ? (
+              <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${conditionColors.bg}`} aria-hidden>
+                <ConditionGlyph className={`h-3 w-3 stroke-2 ${conditionColors.text}`} />
+              </span>
+            ) : (
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-100" aria-hidden>
+                <Stethoscope className="h-3 w-3 stroke-2 text-slate-600" />
+              </span>
+            )}
+            <span className={`text-xs font-medium ${conditionColors.text}`}>{conditionLabel}</span>
+          </div>
+
+          {/* Match Quality Badge */}
+          {p.qualityScore != null && p.qualityScore > 0 && (
+            <div className="hidden sm:block">
+              <span className="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+                Match Quality: {Math.round(p.qualityScore)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* CTG icon */}
+        {(p.ctgov_url || p.nct_id) && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a
+                href={p.ctgov_url ?? `https://clinicaltrials.gov/study/${p.nct_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Open on ClinicalTrials.gov"
+                className="inline-flex items-center justify-center w-8 h-8 rounded-xl hover:bg-slate-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 touch-manipulation"
+              >
+                <Image
+                  src="/icons/ctg.svg"
+                  alt="ClinicalTrials.gov"
+                  width={16}
+                  height={16}
+                  className="w-4 h-4"
+                />
+              </a>
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" className="max-w-xs">
+              <p>Open on ClinicalTrials.gov</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+
+      {/* Title with match status */}
+      <div className="mb-2">
+        <h3 className="font-heading line-clamp-2 text-base font-semibold text-pm-ink mb-1" title={p.title}>
+          {sentenceCaseTitle}
+        </h3>
+
+        {/* Match status (evaluation removed in PMQ flow) */}
+      </div>
+
+      {/* Sponsor */}
+      {
+        p.sponsor && (
+          <div className="text-xs text-pm-muted mb-3">
+            {p.sponsor}
+          </div>
+        )
+      }
+
+      {/* Facts strip */}
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {facts.map(({ key, label, icon: IconEl }) => (
+          <span key={key} className="inline-flex items-center gap-1 rounded-xl bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 whitespace-nowrap">
+            <IconEl className="h-3 w-3 stroke-2 text-slate-500 flex-shrink-0" aria-hidden />
+            <span className="truncate max-w-[120px]">{label}</span>
+          </span>
+        ))}
+      </div>
+
+      {/* CTA row */}
+      <div className="mt-auto flex items-center gap-2">
+        <Link
+          href={screenerHref({ nct_id: p.nct_id })}
+          prefetch
+          aria-label={`Check eligibility for ${p.title}`}
+          className="flex-1"
+          onClick={() => logEvent('trial_clicked', { nct_id: p.nct_id, confidence: (p as any).confidence ?? null })}
+        >
+          <AnimatedButton variant="accent" className="w-full rounded-xl">Check eligibility</AnimatedButton>
+        </Link>
+
+        {/* Save/Shortlist button */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="Save trial to shortlist"
+              className="inline-flex items-center justify-center w-12 h-12 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 touch-manipulation"
+            >
+              <Bookmark className="h-4 w-4 stroke-2 text-slate-600" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" className="max-w-xs">
+            <p>Save to shortlist</p>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    </AnimatedCard >
+  );
+}
