@@ -7,7 +7,15 @@ import type { PublicTrial } from "@/components/trials/PublicTrialCard";
 
 const PAGE_SIZE = 24;
 const DEFAULT_RADIUS = 50;
-const TRIALS_PUBLIC_SELECT = "nct_id, title, status_bucket, conditions, quality_score, sponsor, minimum_age, maximum_age, gender, questionnaire_json, phase";
+const TRIALS_PUBLIC_SELECT = "nct_id, title, display_title, status_bucket, conditions, quality_score, sponsor, minimum_age, maximum_age, min_age_years, max_age_years, gender, questionnaire_json, phase, site_count_us, states_list";
+
+function normalizeSexFilter(value: unknown): "male" | "female" | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (["male", "m", "man", "men"].includes(normalized)) return "male";
+  if (["female", "f", "woman", "women"].includes(normalized)) return "female";
+  return null;
+}
 
 function parseRadius(value: unknown): number {
   if (typeof value === "string") {
@@ -44,7 +52,7 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
   const effectiveCondition = urlCondition || (useCookieFallback ? (profile?.conditions?.[0] as string) : "") || "";
   const effectiveZip = urlZip || (useCookieFallback ? (profile?.zip as string) : "") || "";
   const effectiveSex = urlSex || (useCookieFallback ? profile?.sex : "") || "";
-  const effectiveAge = urlAge ? parseInt(urlAge) : (useCookieFallback ? profile?.age : null);
+  const effectiveAge = urlAge ? parseInt(urlAge, 10) : (useCookieFallback ? profile?.age : null);
   const effectiveRadius = parseRadius(urlRadius);
 
   const {
@@ -64,7 +72,7 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
 
   if (effectiveZip) {
     try {
-      location = await resolveZipToLatLon(effectiveZip, supabase);
+      location = await resolveZipToLatLon(effectiveZip, supabase as any);
     } catch (e) {
       // failed to resolve zip
     }
@@ -90,7 +98,7 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
   // -- GEOSPATIAL LOGIC END --
 
   let query = supabase
-    .from("trials")
+    .from("trials_serving_latest")
     .select(TRIALS_PUBLIC_SELECT, { count: "exact" });
 
   // Apply Filters
@@ -105,20 +113,27 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
     query = query.in("status_bucket", statusBuckets);
   }
 
-  // Age-based filtering 
-  // NOTE: minimum_age/maximum_age are currently TEXT strings like "18 Years"
-  // Supabase .lte/.gte logic won't work correctly on these strings.
-  // We skip server-side age filtering for now to avoid 0 results, 
-  // but we still pass it to match scoring which handles it better client-side.
+  // Age-based filtering (min/max are numeric in years)
+  if (typeof effectiveAge === "number" && Number.isFinite(effectiveAge)) {
+    const age = Math.max(0, Math.round(effectiveAge));
+    // (min_age_years is null OR min_age_years <= age) AND
+    // (max_age_years is null OR max_age_years >= age)
+    query = query.or(
+      [
+        `and(min_age_years.is.null,max_age_years.is.null)`,
+        `and(min_age_years.is.null,max_age_years.gte.${age})`,
+        `and(min_age_years.lte.${age},max_age_years.is.null)`,
+        `and(min_age_years.lte.${age},max_age_years.gte.${age})`,
+      ].join(","),
+    );
+  }
 
   // Gender-based filtering
-  if (effectiveSex) {
-    const userSex = String(effectiveSex).toUpperCase();
-    if (userSex === 'MALE') {
-       query = query.in('gender', ['MALE', 'ALL', 'BOTH']);
-    } else if (userSex === 'FEMALE') {
-       query = query.in('gender', ['FEMALE', 'ALL', 'BOTH']);
-    }
+  const sexFilter = normalizeSexFilter(effectiveSex);
+  if (sexFilter === "male") {
+    query = query.in("gender", ["MALE", "male", "ALL", "all", "BOTH", "both", "ANY", "any"]);
+  } else if (sexFilter === "female") {
+    query = query.in("gender", ["FEMALE", "female", "ALL", "all", "BOTH", "both", "ANY", "any"]);
   }
 
   if (proximityApplied && nearbyIds) {
@@ -162,6 +177,32 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
   // Enrich with Geo Data
   if (Object.keys(metaByNctId).length > 0) {
     trialsData = await applyNearestMetaToTrials(trialsData, metaByNctId) as PublicTrial[];
+  }
+
+  // Batch-fetch AI summaries for card blurbs
+  const nctIds = trialsData.map(t => t.nct_id);
+  if (nctIds.length > 0) {
+    const { data: summaryRows } = await supabase
+      .from("trial_insights_latest")
+      .select("nct_id, plain_summary_json")
+      .in("nct_id", nctIds);
+
+    const summaryMap = new Map<string, string>();
+    for (const row of summaryRows ?? []) {
+      try {
+        const json = typeof row.plain_summary_json === "string"
+          ? JSON.parse(row.plain_summary_json)
+          : row.plain_summary_json;
+        const fullSummary: string = json?.summary ?? "";
+        const firstSentence = fullSummary.split(/(?<=\.)\s/)[0]?.trim() ?? "";
+        if (firstSentence) summaryMap.set(row.nct_id, firstSentence);
+      } catch { /* skip malformed */ }
+    }
+
+    trialsData = trialsData.map(t => ({
+      ...t,
+      card_summary: summaryMap.get(t.nct_id) ?? null,
+    }));
   }
 
   // Calculate confidence for each trial
