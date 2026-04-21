@@ -4,12 +4,13 @@ import { CompactEncrypt, compactDecrypt } from "jose";
 import { z } from "zod";
 
 export type ProfileCookie = {
-  age?: number;
-  sex?: "male" | "female" | "other";
-  zip?: string;
+  age?: number | null;
+  sex?: "male" | "female" | "other" | null;
+  zip?: string | null;
   pregnancy?: boolean | null;
   conditions?: string[];
-  radius?: number;
+  radius?: number | null;
+  for_self?: boolean | null;
 };
 
 export const COOKIE_NAME = "pm_profile";
@@ -23,6 +24,7 @@ const profileSchema = z.object({
   pregnancy: z.boolean().nullable().optional(),
   conditions: z.array(z.string().min(1)).max(12).optional(),
   radius: z.number().int().min(1).max(10000).nullable().optional(),
+  for_self: z.boolean().nullable().optional(),
 });
 
 const payloadSchema = z.object({
@@ -119,4 +121,3 @@ export function clearProfileCookie(res: NextResponse) {
   });
   return res;
 }
-
