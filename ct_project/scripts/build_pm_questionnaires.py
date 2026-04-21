@@ -16,9 +16,9 @@ from pmq.dbio import (
     connect,
     ensure_output_tables,
     fetch_trials_for_questionnaires,
-    upsert_atoms,
-    upsert_criteria,
-    upsert_questionnaire,
+    upsert_atoms_batch,
+    upsert_criteria_batch,
+    upsert_questionnaire_batch,
     write_eval_snapshot,
 )
 from pmq.generator import generate_questionnaire
@@ -33,7 +33,7 @@ from pmq.question_bank import (
 )
 
 
-DEFAULT_PIPELINE_VERSION = "pmq_v10_no_preg_for_male_2025_12_22"
+DEFAULT_PIPELINE_VERSION = "pmq_v19_answerability_trim_2025_12_24"
 
 
 def _parse_bool(value: str) -> bool:
@@ -96,6 +96,10 @@ def main() -> int:
         if not trials:
             break
 
+        criteria_rows = []
+        questionnaire_rows = []
+        atoms_rows = []
+
         for t in trials:
             
             if not t.eligibility_text_clean:
@@ -140,12 +144,13 @@ def main() -> int:
 
             if not args.dry_run:
                 if args.write_atoms:
-                    upsert_atoms(
-                        con,
-                        nct_id=result.nct_id,
-                        pipeline_version=result.pipeline_version,
-                        eligibility_hash=result.eligibility_hash,
-                        atoms=atoms,
+                    atoms_rows.append(
+                        (
+                            result.nct_id,
+                            result.pipeline_version,
+                            result.eligibility_hash,
+                            atoms,
+                        )
                     )
                 criteria_payload = {
                     "criteria": result.criteria,
@@ -159,30 +164,43 @@ def main() -> int:
                         "tier2_count": int(stats.get("tier2_count") or 0),
                     },
                 }
-                upsert_criteria(
-                    con,
-                    nct_id=result.nct_id,
-                    pipeline_version=result.pipeline_version,
-                    eligibility_hash=result.eligibility_hash,
-                    criteria_json=json.dumps(criteria_payload, ensure_ascii=False),
-                    stats=stats,
+                criteria_rows.append(
+                    [
+                        result.nct_id,
+                        result.pipeline_version,
+                        result.eligibility_hash,
+                        json.dumps(criteria_payload, ensure_ascii=False),
+                        int(stats.get("total_bullets") or 0),
+                        int(stats.get("covered_bullets") or 0),
+                        float(stats.get("coverage_ratio") or 0.0),
+                        int(stats.get("criteria_count") or 0),
+                    ]
                 )
-                upsert_questionnaire(
-                    con,
-                    nct_id=result.nct_id,
-                    pipeline_version=result.pipeline_version,
-                    eligibility_hash=result.eligibility_hash,
-                    questionnaire_json=json.dumps(result.questionnaire, ensure_ascii=False),
-                    question_count=result.question_count,
-                    clinic_only_count=result.clinic_only_count,
-                    quality_score=result.quality_score,
-                    quality_flags=result.quality_flags,
-                    readiness=result.readiness,
+                questionnaire_rows.append(
+                    [
+                        result.nct_id,
+                        result.pipeline_version,
+                        result.eligibility_hash,
+                        json.dumps(result.questionnaire, ensure_ascii=False),
+                        int(result.question_count),
+                        int(result.clinic_only_count),
+                        int(result.quality_score),
+                        list(result.quality_flags),
+                        result.readiness,
+                    ]
                 )
 
             processed += 1
             if processed % 500 == 0:
                 print(f"Processed {processed} trials...", file=sys.stderr)
+
+        if not args.dry_run:
+            if criteria_rows:
+                upsert_criteria_batch(con, rows=criteria_rows)
+            if questionnaire_rows:
+                upsert_questionnaire_batch(con, rows=questionnaire_rows)
+            if args.write_atoms and atoms_rows:
+                upsert_atoms_batch(con, rows=atoms_rows)
 
         last_nct_id = trials[-1].nct_id
         if remaining_limit is not None:
