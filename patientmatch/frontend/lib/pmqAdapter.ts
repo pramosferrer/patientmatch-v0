@@ -26,6 +26,25 @@ export type PmqAdapterResult = {
   initialAnswers: Record<string, any>;
 };
 
+function transformForCaregiver(text: string): string {
+  return text
+    .replace(/\bHave you\b/g, "Have they")
+    .replace(/\bDo you\b/g, "Do they")
+    .replace(/\bAre you\b/g, "Are they")
+    .replace(/\bWere you\b/g, "Were they")
+    .replace(/\bCan you\b/g, "Can they")
+    .replace(/\bDid you\b/g, "Did they")
+    .replace(/\bWill you\b/g, "Will they")
+    .replace(/\bYour\b/g, "Their")
+    .replace(/\byour\b/g, "their")
+    .replace(/\byourself\b/g, "themselves")
+    .replace(/\byou've\b/g, "they've")
+    .replace(/\byou're\b/g, "they're")
+    .replace(/\byou are\b/g, "they are")
+    .replace(/\byou have\b/g, "they have")
+    .replace(/\byou\b/g, "they");
+}
+
 const hasValue = (value: unknown): boolean => {
   if (value === null || value === undefined) return false;
   if (typeof value === "string") return value.trim().length > 0;
@@ -198,7 +217,8 @@ function convertPmqQuestion(
  */
 export function pmqToUiQuestions(
   pmq: any,
-  profile?: UserProfile,
+  profile?: UserProfile | null,
+  perspective: "self" | "other" = "self",
 ): PmqAdapterResult {
   const initialAnswers: Record<string, any> = {};
 
@@ -224,9 +244,11 @@ export function pmqToUiQuestions(
   const mainQuestions: UiQuestion[] = [];
   const optionalQuestions: UiQuestion[] = [];
 
+  const profileOrUndefined = profile ?? undefined;
+
   // Process main questions
   sourceQuestions.forEach((question, index) => {
-    const uiQuestion = convertPmqQuestion(question, index, profile, initialAnswers);
+    const uiQuestion = convertPmqQuestion(question, index, profileOrUndefined, initialAnswers);
     if (uiQuestion) {
       mainQuestions.push(uiQuestion);
     }
@@ -234,7 +256,7 @@ export function pmqToUiQuestions(
 
   // Process optional questions
   sourceOptional.forEach((question, index) => {
-    const uiQuestion = convertPmqQuestion(question, index + sourceQuestions.length, profile, initialAnswers);
+    const uiQuestion = convertPmqQuestion(question, index + sourceQuestions.length, profileOrUndefined, initialAnswers);
     if (uiQuestion) {
       // Promote critical profile fields to main if profile is missing them
       const key = uiQuestion.id.toLowerCase();
@@ -281,15 +303,27 @@ export function pmqToUiQuestions(
   
   mainQuestions.sort((a, b) => getQuestionPriority(a) - getQuestionPriority(b));
 
+  if (perspective === "other") {
+    for (const q of mainQuestions) {
+      q.label = transformForCaregiver(q.label);
+      if (q.helperText) q.helperText = transformForCaregiver(q.helperText);
+    }
+    for (const q of optionalQuestions) {
+      q.label = transformForCaregiver(q.label);
+      if (q.helperText) q.helperText = transformForCaregiver(q.helperText);
+    }
+  }
+
   return { mainQuestions, optionalQuestions, initialAnswers };
 }
 
 // Legacy export for backward compatibility
 export function pmqToUiQuestionsLegacy(
   pmq: any,
-  profile?: UserProfile,
+  profile?: UserProfile | null,
+  perspective: "self" | "other" = "self",
 ): { uiQuestions: UiQuestion[]; initialAnswers: Record<string, any> } {
-  const result = pmqToUiQuestions(pmq, profile);
+  const result = pmqToUiQuestions(pmq, profile, perspective);
   return {
     uiQuestions: [...result.mainQuestions, ...result.optionalQuestions],
     initialAnswers: result.initialAnswers,
