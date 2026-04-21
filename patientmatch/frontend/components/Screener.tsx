@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/accordion";
 import AuroraBG from "@/components/AuroraBG";
 import type { ProfileCookie } from "@/shared/profileCookie";
+import { toConditionLabel } from "@/shared/conditions-normalize";
 import type { UiQuestion } from "@/lib/screener/types";
 import ScreenerInput from "@/components/screener/ScreenerInput";
 
@@ -71,6 +72,13 @@ type ScreenerProps = {
 type AnswerMap = Record<string, unknown>;
 
 type CompletionStatus = "provided" | "skipped" | "unsure";
+type PrefillSource = "profile" | "prefill";
+type PrefilledQuestionSummary = {
+  id: string;
+  label: string;
+  displayValue: string;
+  source: PrefillSource;
+};
 
 const AFFIRMATIONS = [
   "Got it, thanks.",
@@ -240,6 +248,70 @@ function buildInitialAnswerMap(initialAnswers: Record<string, unknown>): Map<str
   return map;
 }
 
+function normalizeConditionToken(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function referencesSelectedCondition(
+  selectedCondition: string | undefined,
+  question: UiQuestion,
+  variable: string,
+  label: string,
+): boolean {
+  if (!selectedCondition) return false;
+  const normalizedCondition = normalizeConditionToken(selectedCondition);
+  if (!normalizedCondition) return false;
+
+  const searchable = normalizeConditionToken(`${question.id} ${variable} ${label}`);
+  if (!searchable) return false;
+
+  const tokens = normalizedCondition
+    .split(" ")
+    .filter((token) => token.length > 2 && !["condition", "disease", "disorder"].includes(token));
+
+  if (tokens.length === 0) {
+    return searchable.includes(normalizedCondition);
+  }
+
+  const requiredHits = tokens.length === 1 ? 1 : Math.min(2, tokens.length);
+  const hits = tokens.filter((token) => searchable.includes(token)).length;
+  return hits >= requiredHits;
+}
+
+function formatPrefilledAnswer(question: UiQuestion, value: unknown): string {
+  if (value === null) return "Not sure";
+  if (value === undefined) return "Not answered";
+
+  const kind = getQuestionKind(question);
+  if (kind === "boolean") {
+    if (value === true) return "Yes";
+    if (value === false) return "No";
+  }
+
+  if (Array.isArray(value)) {
+    const items = value
+      .map((item) => (typeof item === "string" ? item.trim() : String(item)))
+      .filter((item) => item.length > 0);
+    return items.length > 0 ? items.join(", ") : "Not answered";
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return formatNumeric(value);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : "Not answered";
+  }
+
+  return String(value);
+}
+
 export function resolveInitialAnswerForQuestion(
   question: UiQuestion,
   initialAnswerMap: Map<string, unknown>,
@@ -250,13 +322,26 @@ export function resolveInitialAnswerForQuestion(
   const id = question.id.toLowerCase();
   const variable = getQuestionVariable(question);
   const label = (question.label ?? "").toLowerCase();
+  const selectedConditionRaw = initialAnswerMap.get("selected_condition");
+  const selectedCondition =
+    typeof selectedConditionRaw === "string" && selectedConditionRaw.trim().length > 0
+      ? selectedConditionRaw
+      : undefined;
 
   candidates.add(id);
   if (variable) candidates.add(variable);
 
-  if (variable === "age_years" || variable === "age" || id.includes("age") || label.includes("age")) {
+  if (
+    variable === "age_years" ||
+    variable === "age" ||
+    id.includes("age") ||
+    label.includes("age") ||
+    label.includes("how old")
+  ) {
     candidates.add("age");
     candidates.add("age_years");
+    candidates.add("dem_age");
+    candidates.add("patient_age");
   }
 
   if (
@@ -265,10 +350,13 @@ export function resolveInitialAnswerForQuestion(
     id.includes("sex") ||
     id.includes("gender") ||
     label.includes("sex") ||
-    label.includes("gender")
+    label.includes("gender") ||
+    label.includes("at birth")
   ) {
     candidates.add("sex");
     candidates.add("gender");
+    candidates.add("sex_at_birth");
+    candidates.add("dem_sex");
   }
 
   if (variable === "has_diabetes" || variable.includes("diabet")) {
@@ -284,6 +372,21 @@ export function resolveInitialAnswerForQuestion(
   if (variable === "has_cancer" || variable.includes("cancer")) {
     candidates.add("cancer");
     candidates.add("has_cancer");
+  }
+
+  const isDiagnosisPrompt =
+    variable.includes("diagnos") ||
+    variable === "diagnosis_confirmed" ||
+    id.includes("diagnos") ||
+    ((label.includes("diagnosed") || label.includes("do you have")) &&
+      (label.includes("condition") || label.includes("disease")));
+  if (
+    isDiagnosisPrompt &&
+    referencesSelectedCondition(selectedCondition, question, variable, label)
+  ) {
+    candidates.add("diagnosis");
+    candidates.add("diagnosis_confirmed");
+    candidates.add("has_condition");
   }
 
   for (const candidate of candidates) {
@@ -374,7 +477,9 @@ function getReassurance(question: UiQuestion, status: CompletionStatus) {
 function makeNumberSchema(label: string, required: boolean, bounds?: NumberBounds) {
   let schema: z.ZodTypeAny = z.preprocess((val) => {
     if (val === "" || val === null || val === undefined) return undefined;
-    const n = Number(val);
+    const normalized =
+      typeof val === "string" ? val.trim().replace(",", ".") : val;
+    const n = Number(normalized);
     return Number.isFinite(n) ? n : val;
   }, z.number());
 
@@ -513,6 +618,7 @@ export default function Screener({
       if (profile.sex === "male" || profile.sex === "female" || profile.sex === "other") {
         result.sex = profile.sex;
         result.dem_sex = profile.sex;
+        result.sex_at_birth = profile.sex;
       }
 
       if (profile.pregnancy === true || profile.pregnancy === false) {
@@ -563,6 +669,7 @@ export default function Screener({
     });
     return base;
   });
+  const [prefillReviewPending, setPrefillReviewPending] = useState(false);
 
   const [completion, setCompletion] = useState<Record<string, CompletionStatus>>(() => {
     const base: Record<string, CompletionStatus> = {};
@@ -591,6 +698,7 @@ export default function Screener({
   const [whyDisclosure, setWhyDisclosure] = useState<Record<string, boolean>>({});
   const previousQuestionIdRef = useRef<string | null>(null);
   const autoAdvancedRef = useRef<Set<string>>(new Set());
+  const trackedScreenerStartRef = useRef(false);
   const reportTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [showReportModal, setShowReportModal] = useState(false);
@@ -600,7 +708,7 @@ export default function Screener({
   const [isReporting, setIsReporting] = useState(false);
   const [reportSuccess, setReportSuccess] = useState(false);
   const reportTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const activeInputRef = useRef<HTMLInputElement | null>(null);
+  const activeInputRef = useRef<HTMLInputElement>(null);
   const prefersReducedMotion = useReducedMotion();
   const markQuestionTouched = useCallback(
     (id: string) => setTouched((prev) => ({ ...prev, [id]: true })),
@@ -650,8 +758,14 @@ export default function Screener({
     };
   }, [precalculatedQuestions]);
 
-  const questionnaire = screenerData?.questionnaire ?? { include: [], exclude: [] };
-  const orderedQuestions = screenerData?.orderedQuestions ?? [];
+  const questionnaire = useMemo(
+    () => screenerData?.questionnaire ?? { include: [], exclude: [] },
+    [screenerData],
+  );
+  const orderedQuestions = useMemo(
+    () => screenerData?.orderedQuestions ?? [],
+    [screenerData],
+  );
   const headingMap = useMemo(() => {
     const map = new Map<string, string>();
     let currentHeading: { label: string; remaining: number } | null = null;
@@ -681,7 +795,10 @@ export default function Screener({
     return process.env.NODE_ENV !== "production" && (showDebug || q);
   });
 
-  const patientQuestions = screenerData?.patientQuestions ?? [];
+  const patientQuestions = useMemo(
+    () => screenerData?.patientQuestions ?? [],
+    [screenerData],
+  );
 
   // Filter out pregnancy/breastfeeding questions for males
   const criteria: UiQuestion[] = useMemo(() => {
@@ -722,6 +839,18 @@ export default function Screener({
   const clinicOnlyCount = clinicQuestions.length;
   const patientCount = criteria.length;
   const showClinicHint = !clinicPreview && clinicOnlyCount > 0;
+
+  useEffect(() => {
+    if (trackedScreenerStartRef.current) return;
+    if (!trial.nct_id) return;
+    if (criteria.length === 0) return;
+    trackedScreenerStartRef.current = true;
+    logEvent("patient_screener_started", {
+      nct_id: trial.nct_id,
+      condition_slug: trial.conditionSlug ?? undefined,
+      ui: isCompact ? "compact" : "default",
+    });
+  }, [criteria.length, isCompact, trial.conditionSlug, trial.nct_id]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
@@ -1196,7 +1325,7 @@ export default function Screener({
     if (existing !== undefined) {
       setDraftValue(existing);
     } else {
-      setDraftValue(currentKind === "choice" && current.options.length <= 4 ? [] : "");
+      setDraftValue(currentKind === "choice" && (current.options?.length ?? 0) <= 4 ? [] : "");
     }
 
     const previousQuestionId = previousQuestionIdRef.current;
@@ -1258,11 +1387,140 @@ export default function Screener({
 
   // Helper to compute display progress
   const answeredCount = useMemo(() => Object.keys(completion).length, [completion]);
+  const prefilledQuestionSummaries = useMemo<PrefilledQuestionSummary[]>(() => {
+    return criteria
+      .map((question) => {
+        const source = prefillSources[question.id];
+        if (source !== "prefill" && source !== "profile") return null;
+        const status = completion[question.id];
+        if (status !== "provided" && status !== "unsure") return null;
+        const value = answers[question.id];
+        if (value === undefined) return null;
+        return {
+          id: question.id,
+          label: question.label,
+          displayValue: formatPrefilledAnswer(question, value),
+          source,
+        };
+      })
+      .filter((item): item is PrefilledQuestionSummary => item !== null);
+  }, [answers, completion, criteria, prefillSources]);
+  const prefilledCount = prefilledQuestionSummaries.length;
+  const prefilledReviewStorageKey = useMemo(
+    () => `screener:${trial.nct_id}:prefill_review_confirmed_v1`,
+    [trial.nct_id],
+  );
+  const prefillSnapshot = useMemo(() => {
+    const age =
+      toFiniteNumber(answers.age_years) ??
+      toFiniteNumber(answers.age) ??
+      toFiniteNumber(answers.dem_age);
+    const rawSex =
+      (typeof answers.sex_at_birth === "string" && answers.sex_at_birth) ||
+      (typeof answers.sex === "string" && answers.sex) ||
+      (typeof answers.dem_sex === "string" && answers.dem_sex) ||
+      "";
+    const normalizedSex = rawSex.trim().toLowerCase();
+    const sexLabel =
+      normalizedSex === "male"
+        ? "Male"
+        : normalizedSex === "female"
+          ? "Female"
+          : normalizedSex === "other"
+            ? "Other"
+            : null;
+    const rawCondition =
+      (typeof answers.selected_condition === "string" && answers.selected_condition.trim()) ||
+      (typeof answers.condition === "string" && answers.condition.trim()) ||
+      (Array.isArray(answers.conditions) && typeof answers.conditions[0] === "string"
+        ? String(answers.conditions[0]).trim()
+        : "") ||
+      (typeof trial.conditionSlug === "string" && trial.conditionSlug.trim()) ||
+      "";
+    const conditionLabel = rawCondition
+      ? toConditionLabel(rawCondition.toLowerCase().replace(/-/g, "_"))
+      : null;
+    return {
+      ageLabel: typeof age === "number" ? `${Math.round(age)}` : null,
+      sexLabel,
+      conditionLabel,
+    };
+  }, [answers, trial.conditionSlug]);
   const progressValue = totalSteps === 0 ? 100 : Math.round((Math.min(stepIndex + (flowState === "acknowledging" ? 1 : 0), totalSteps) / totalSteps) * 100);
   const displayStep = Math.min(stepIndex + 1, totalSteps);
-  const progressMicrocopy = totalSteps > 0 ? `Step ${Math.min(displayStep, totalSteps)} of ${totalSteps}` : "";
+  const progressMicrocopy =
+    totalSteps > 0
+      ? `Step ${Math.min(displayStep, totalSteps)} of ${totalSteps}${prefilledCount > 0 ? ` (${prefilledCount} prefilled)` : ""}`
+      : "";
+  const showPrefillReviewPanel =
+    flowState === "collecting" && prefillReviewPending && prefilledCount > 0;
   const actionRowStack = isCompact ? "max-[380px]:flex-col max-[380px]:items-stretch" : "";
   const actionButtonStack = isCompact ? "max-[380px]:w-full" : "";
+
+  useEffect(() => {
+    if (prefilledCount === 0) {
+      setPrefillReviewPending(false);
+      return;
+    }
+    try {
+      if (typeof window !== "undefined") {
+        const confirmed = window.sessionStorage.getItem(prefilledReviewStorageKey) === "1";
+        setPrefillReviewPending(!confirmed);
+      }
+    } catch {
+      setPrefillReviewPending(true);
+    }
+  }, [prefilledCount, prefilledReviewStorageKey]);
+
+  const confirmPrefillReview = useCallback(() => {
+    setPrefillReviewPending(false);
+    try {
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(prefilledReviewStorageKey, "1");
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [prefilledReviewStorageKey]);
+
+  const editPrefilledQuestion = useCallback(
+    (questionId: string) => {
+      const targetIndex = criteria.findIndex((question) => question.id === questionId);
+      if (targetIndex < 0) return;
+
+      confirmPrefillReview();
+      autoAdvancedRef.current.delete(questionId);
+      setFlowState("collecting");
+      setRecentNote(null);
+      setValidationErrors((prev) => {
+        const next = { ...prev };
+        delete next[questionId];
+        return next;
+      });
+      setAnswers((prev) => {
+        const next = { ...prev };
+        delete next[questionId];
+        return next;
+      });
+      setCompletion((prev) => {
+        const next = { ...prev };
+        delete next[questionId];
+        return next;
+      });
+      setPrefillSources((prev) => {
+        const next = { ...prev };
+        delete next[questionId];
+        return next;
+      });
+      setTouched((prev) => {
+        const next = { ...prev };
+        delete next[questionId];
+        return next;
+      });
+      setStepIndex(targetIndex);
+    },
+    [confirmPrefillReview, criteria],
+  );
 
   const setAnswerStatus = useCallback(
     (question: UiQuestion, status: CompletionStatus, value?: unknown) => {
@@ -1321,8 +1579,9 @@ export default function Screener({
 
     let preparedValue: unknown = draftValue;
     if (currentKind === "number" && typeof draftValue === "string") {
-      preparedValue = draftValue === "" ? undefined : Number(draftValue);
-    } else if (currentKind === "choice" && currentQuestion.options.length <= 4) {
+      const normalized = draftValue.trim().replace(",", ".");
+      preparedValue = normalized === "" ? undefined : Number(normalized);
+    } else if (currentKind === "choice" && (currentQuestion.options ?? []).length <= 4) {
       if (Array.isArray(draftValue)) {
         preparedValue = draftValue;
       } else if (draftValue) {
@@ -1526,7 +1785,6 @@ export default function Screener({
     questionnaire,
     trial,
     clinicQuestions,
-    criteria,
   ]);
 
   // Trigger evaluation when flowState is set to 'evaluating' (from handleSave on last question)
@@ -1876,11 +2134,12 @@ export default function Screener({
       labelId?: string;
       rangeDescription?: string | null;
       invalid?: boolean;
-      inputRef?: RefObject<HTMLInputElement>;
+      inputRef?: RefObject<HTMLInputElement | null>;
     },
   ) => {
     const { controlId, describedBy, labelId, rangeDescription, invalid, inputRef } = options;
     const questionKind = getQuestionKind(question);
+    const resolvedRef = (inputRef ?? activeInputRef) as RefObject<HTMLInputElement>;
 
     if (
       process.env.NODE_ENV !== "production" &&
@@ -1916,7 +2175,7 @@ export default function Screener({
                 type="button"
                 onClick={() => setDraftValue(option)}
                 className={cn(
-                  "relative z-10 inline-flex h-12 items-center justify-center gap-2 rounded-none border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-900 transition hover:border-zinc-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary",
+                  "relative z-10 inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-900 transition hover:border-zinc-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary",
                   selected && "ring-2 ring-emerald-600 border-emerald-600 bg-emerald-50/20 text-emerald-800"
                 )}
                 aria-pressed={selected}
@@ -1962,14 +2221,14 @@ export default function Screener({
         <div
           data-testid="pm-input-container"
           className={cn(
-            "relative z-0 space-y-2 rounded-none border border-zinc-200 bg-white p-4 shadow-sm",
+            "relative z-0 space-y-2 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm",
             debugMode && "ring-2 ring-blue-300/40"
           )}
         >
           <ScreenerInput
             id={controlId ?? `${question.id}-input`}
-            ref={inputRef ?? activeInputRef}
-            type="number"
+            ref={resolvedRef}
+            type="text"
             value={draftValue === undefined || draftValue === null ? "" : String(draftValue)}
             onChange={(event) => setDraftValue(event.target.value)}
             onBlur={() => {
@@ -1981,13 +2240,11 @@ export default function Screener({
             aria-invalid={invalid ? true : undefined}
             data-testid="pm-input-ui"
             placeholder={placeholderText}
-            min={lo}
-            max={hi}
-            step={1}
-            inputMode="numeric"
+            inputMode="decimal"
+            pattern="[0-9]*[.,]?[0-9]*"
             className={cn(
               "relative z-10",
-              "block w-full h-12 min-h-[3rem] rounded-none",
+              "block w-full h-12 min-h-[3rem] rounded-lg",
               "bg-white text-zinc-900 placeholder:text-zinc-500",
               "border border-zinc-300 shadow-sm",
               "px-4 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
@@ -2046,7 +2303,7 @@ export default function Screener({
                   type="button"
                   onClick={() => toggleValue(option)}
                   className={cn(
-                    "relative z-10 flex h-auto items-center justify-start gap-2 rounded-none border border-zinc-300 bg-white px-4 py-3 text-left text-sm font-medium text-zinc-900 transition hover:border-zinc-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary",
+                    "relative z-10 flex h-auto items-center justify-start gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-3 text-left text-sm font-medium text-zinc-900 transition hover:border-zinc-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary",
                     selected && "ring-2 ring-emerald-600 border-emerald-600 bg-emerald-50/20 text-emerald-800"
                   )}
                   aria-pressed={selected}
@@ -2065,7 +2322,7 @@ export default function Screener({
         <div className="space-y-2">
           <select
             id={controlId}
-            className="relative z-10 h-12 w-full rounded-none border border-zinc-300 bg-white px-4 text-base text-zinc-900 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+            className="pm-native-select relative z-10 h-12 w-full rounded-lg border border-border bg-warm-cream/70 px-4 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             value={(draftValue as string) ?? ""}
             onChange={(event) => setDraftValue(event.target.value)}
             aria-describedby={describedBy}
@@ -2083,20 +2340,20 @@ export default function Screener({
       );
     }
 
-    if (typeof console !== "undefined") {
+    if (process.env.NODE_ENV !== "production" && typeof console !== "undefined") {
       console.warn("Unknown question kind", question.clause?.criterion_id ?? question.id);
     }
 
     return (
       <div
         className={cn(
-          "relative z-0 space-y-2 rounded-none border border-zinc-200 bg-white p-4 shadow-sm",
+          "relative z-0 space-y-2 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm",
           debugMode && "ring-2 ring-blue-300/40"
         )}
       >
         <ScreenerInput
           id={controlId ?? `${question.id}-input`}
-          ref={inputRef ?? activeInputRef}
+          ref={resolvedRef}
           type="text"
           value={draftValue === undefined || draftValue === null ? "" : String(draftValue)}
           onChange={(event) => setDraftValue(event.target.value)}
@@ -2167,7 +2424,7 @@ export default function Screener({
         )}
 
         <section className={cn("flex flex-col gap-4", isCompact && "mx-auto w-full max-w-3xl")}>
-          <div className="relative overflow-hidden rounded-none bg-white/95">
+          <div className="relative overflow-hidden rounded-lg bg-white/95">
             <AuroraBG
               className={cn("absolute inset-0 z-0", isCompact ? "opacity-60" : "opacity-80")}
               intensity={isCompact ? "calm" : "default"}
@@ -2193,6 +2450,16 @@ export default function Screener({
                   )}
                 >
                   <div className="min-w-0 flex-1">
+                    {/* Progress bar + counter */}
+                    {totalSteps > 0 && (
+                      <div className="mb-3">
+                        <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
+                          <span>Question {displayStep} of {totalSteps}</span>
+                          <span>{progressValue}%</span>
+                        </div>
+                        <Progress value={progressValue} className="h-1.5" />
+                      </div>
+                    )}
                     {/* Step Pills Progress Indicator */}
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1">
@@ -2223,7 +2490,7 @@ export default function Screener({
                               className={cn(
                                 "h-2 w-2 rounded-full transition-all",
                                 isCompleted && "bg-emerald-500",
-                                isCurrent && "bg-rose-500 scale-110",
+                                isCurrent && "bg-primary scale-110",
                                 !isCompleted && !isCurrent && "bg-slate-200"
                               )}
                             />
@@ -2234,6 +2501,22 @@ export default function Screener({
                         Step {displayStep} of {totalSteps}
                       </span>
                     </div>
+                    {prefilledCount > 0 && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>
+                          {prefilledCount} of {totalSteps} question{totalSteps === 1 ? "" : "s"} were prefilled from your previous answers.
+                        </span>
+                        {!showPrefillReviewPanel && (
+                          <button
+                            type="button"
+                            className="font-medium text-primary underline-offset-4 hover:underline"
+                            onClick={() => setPrefillReviewPending(true)}
+                          >
+                            Review
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {!isCompact && pauseMessage && (
                       <p className="mt-2 text-xs text-muted-foreground">{pauseMessage}</p>
                     )}
@@ -2244,13 +2527,13 @@ export default function Screener({
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-9 w-9 rounded-none border border-border/40 bg-white/80 text-muted-foreground hover:text-foreground"
+                          className="h-9 w-9 rounded-lg border border-border/40 bg-white/80 text-muted-foreground hover:text-foreground"
                         >
                           <MoreHorizontal className="h-5 w-5" aria-hidden="true" />
                           <span className="sr-only">Screener options</span>
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48 rounded-none bg-white/95 backdrop-blur-sm">
+                      <DropdownMenuContent align="end" className="w-48 rounded-lg bg-white/95 backdrop-blur-sm">
                         <DropdownMenuItem
                           onSelect={(event) => {
                             event.preventDefault();
@@ -2353,185 +2636,277 @@ export default function Screener({
               )}
 
               <div className="space-y-6">
-                <div className="space-y-3">
-                  {!isCompact && (
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next question</p>
-                  )}
-                  {progressMicrocopy && (
-                    <p
-                      className="text-sm font-medium text-muted-foreground"
-                      role="status"
-                      aria-live="polite"
-                    >
-                      {progressMicrocopy}
-                    </p>
-                  )}
-                  {activeHeading && (
-                    <p className="text-xs font-semibold uppercase tracking-wide text-primary/80">
-                      {activeHeading}
-                    </p>
-                  )}
-                  <label
-                    id={questionLabelId}
-                    htmlFor={getQuestionKind(currentQuestion) === "number" ? numberInputId : undefined}
-                    className={cn(
-                      "block text-xl font-semibold text-foreground md:text-2xl",
-                      "max-w-[60ch] leading-snug",
-                      isCompact && "text-2xl md:text-3xl"
-                    )}
-                  >
-                    <EnhancedLabel question={currentQuestion} />
-                  </label>
-                  {currentPrefillSource === "profile" && (
-                    <span className="mt-2 inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground">
-                      From your earlier answers
-                    </span>
-                  )}
-                </div>
-
-                {showValidationError && currentError && (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-                    {currentError}
-                  </div>
-                )}
-
-                <AnimatePresence mode="wait">
-                  {flowState === "acknowledging" && recentNote ? (
-                    <m.div
-                      key={`ack-${currentQuestion.id}`}
-                      className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-5 text-sm text-foreground"
-                      {...motionVariants}
-                    >
-                      <p className="font-medium text-foreground">{recentNote.affirmation}</p>
-                      {recentNote.why && (
-                        <p className="text-muted-foreground">Why this helps: {recentNote.why}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground/80">{recentNote.reassurance}</p>
-                      <div className="flex flex-wrap items-center gap-2 pt-2">
-                        <Button variant="ghost" size="sm" onClick={handleEdit}>
-                          Edit answer
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={goToNextQuestion}
-                          disabled={isEvaluating}
-                          className={cn(
-                            "relative z-10 inline-flex items-center justify-center rounded-xl px-4 h-10",
-                            "bg-zinc-900 text-white hover:bg-zinc-800",
-                            "border border-zinc-900"
-                          )}
-                        >
-                          {stepIndex === totalSteps - 1 ? "See results" : "Continue"}
-                        </Button>
+                {showPrefillReviewPanel ? (
+                  <div className="space-y-4 rounded-lg border border-border/60 bg-muted/20 p-5">
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Before we continue
+                      </p>
+                      <h3 className="text-lg font-semibold text-foreground">Review your prefilled answers</h3>
+                      <p className="text-sm text-muted-foreground">
+                        We used previous answers to skip repeated questions. You can update anything before starting this trial screener.
+                      </p>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <div className="rounded-lg border border-border/50 bg-white/80 px-3 py-2">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Age</p>
+                        <p className="text-sm font-semibold text-foreground">
+                          {prefillSnapshot.ageLabel ?? "Not set"}
+                        </p>
                       </div>
-                    </m.div>
-                  ) : (
-                    <m.div
-                      key={`collect-${currentQuestion.id}`}
-                      className="space-y-4"
-                      {...motionVariants}
-                    >
-                      {renderInput(currentQuestion, {
-                        controlId: numberInputId,
-                        describedBy: isWhyOpen ? whyContentId : undefined,
-                        labelId: questionLabelId,
-                        rangeDescription,
-                        invalid: showValidationError,
-                        inputRef: activeInputRef,
-                      })}
-                      {(currentWhy || (isCompact && rangeDescription)) && (
-                        <div className="pt-1">
-                          <button
-                            type="button"
-                            onClick={toggleWhyDisclosure}
-                            aria-expanded={isWhyOpen}
-                            aria-controls={whyContentId}
-                            className={cn(
-                              "inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2",
-                              "underline-offset-4 hover:underline"
-                            )}
+                      <div className="rounded-lg border border-border/50 bg-white/80 px-3 py-2">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Sex at birth</p>
+                        <p className="text-sm font-semibold text-foreground">
+                          {prefillSnapshot.sexLabel ?? "Not set"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-border/50 bg-white/80 px-3 py-2">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Condition</p>
+                        <p className="text-sm font-semibold text-foreground">
+                          {prefillSnapshot.conditionLabel ?? "Not set"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Questions already answered
+                      </p>
+                      <ul className="space-y-2">
+                        {prefilledQuestionSummaries.map((item) => (
+                          <li
+                            key={item.id}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/50 bg-white/85 px-3 py-2"
                           >
-                            Why we ask
-                            <ChevronDown
-                              className={cn("h-4 w-4 transition-transform", isWhyOpen && "rotate-180")}
-                              aria-hidden="true"
-                            />
-                          </button>
-                          {isWhyOpen && (
-                            <div
-                              id={whyContentId}
-                              className="mt-2 rounded-lg border border-border/50 bg-muted/20 px-4 py-3 text-sm text-muted-foreground"
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-foreground">{item.label}</p>
+                              <p className="text-sm text-muted-foreground">{item.displayValue}</p>
+                              <span className="mt-1 inline-flex rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                                {item.source === "prefill" ? "From Guided Setup" : "From saved profile"}
+                              </span>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => editPrefilledQuestion(item.id)}
                             >
-                              {currentWhy ? <p>{currentWhy}</p> : null}
-                              {isCompact && rangeDescription && (
-                                <p className={cn(currentWhy ? "mt-2" : "", "text-muted-foreground")}>{rangeDescription}</p>
+                              Change
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      We only use this information to match trial eligibility. You can edit or remove it anytime.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 pt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const firstPrefilledId = prefilledQuestionSummaries[0]?.id;
+                          if (firstPrefilledId) {
+                            editPrefilledQuestion(firstPrefilledId);
+                          }
+                        }}
+                        disabled={prefilledQuestionSummaries.length === 0}
+                      >
+                        Edit answers
+                      </Button>
+                      <Button type="button" size="sm" onClick={confirmPrefillReview}>
+                        Continue
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      {!isCompact && (
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next question</p>
+                      )}
+                      {progressMicrocopy && (
+                        <p
+                          className="text-sm font-medium text-muted-foreground"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          {progressMicrocopy}
+                        </p>
+                      )}
+                      {activeHeading && (
+                        <p className="text-xs font-semibold uppercase tracking-wide text-primary/80">
+                          {activeHeading}
+                        </p>
+                      )}
+                      <label
+                        id={questionLabelId}
+                        htmlFor={getQuestionKind(currentQuestion) === "number" ? numberInputId : undefined}
+                        className={cn(
+                          "block text-xl font-semibold text-foreground md:text-2xl",
+                          "max-w-[60ch] leading-snug",
+                          isCompact && "text-2xl md:text-3xl"
+                        )}
+                      >
+                        <EnhancedLabel question={currentQuestion} />
+                      </label>
+                      {currentPrefillSource === "profile" && (
+                        <span className="mt-2 inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground">
+                          From your saved profile
+                        </span>
+                      )}
+                      {currentPrefillSource === "prefill" && (
+                        <span className="mt-2 inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground">
+                          From Guided Setup
+                        </span>
+                      )}
+                    </div>
+
+                    {showValidationError && currentError && (
+                      <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                        {currentError}
+                      </div>
+                    )}
+
+                    <AnimatePresence mode="wait">
+                      {flowState === "acknowledging" && recentNote ? (
+                        <m.div
+                          key={`ack-${currentQuestion.id}`}
+                          className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-5 text-sm text-foreground"
+                          {...motionVariants}
+                        >
+                          <p className="font-medium text-foreground">{recentNote.affirmation}</p>
+                          {recentNote.why && (
+                            <p className="text-muted-foreground">Why this helps: {recentNote.why}</p>
+                          )}
+                          <p className="text-xs text-muted-foreground/80">{recentNote.reassurance}</p>
+                          <div className="flex flex-wrap items-center gap-2 pt-2">
+                            <Button variant="ghost" size="sm" onClick={handleEdit}>
+                              Edit answer
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={goToNextQuestion}
+                              disabled={isEvaluating}
+                              className={cn(
+                                "relative z-10 inline-flex items-center justify-center rounded-xl px-4 h-10",
+                                "bg-zinc-900 text-white hover:bg-zinc-800",
+                                "border border-zinc-900"
+                              )}
+                            >
+                              {stepIndex === totalSteps - 1 ? "See results" : "Continue"}
+                            </Button>
+                          </div>
+                        </m.div>
+                      ) : (
+                        <m.div
+                          key={`collect-${currentQuestion.id}`}
+                          className="space-y-4"
+                          {...motionVariants}
+                        >
+                          {renderInput(currentQuestion, {
+                            controlId: numberInputId,
+                            describedBy: isWhyOpen ? whyContentId : undefined,
+                            labelId: questionLabelId,
+                            rangeDescription,
+                            invalid: showValidationError,
+                            inputRef: activeInputRef,
+                          })}
+                          {(currentWhy || (isCompact && rangeDescription)) && (
+                            <div className="pt-1">
+                              <button
+                                type="button"
+                                onClick={toggleWhyDisclosure}
+                                aria-expanded={isWhyOpen}
+                                aria-controls={whyContentId}
+                                className={cn(
+                                  "inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2",
+                                  "underline-offset-4 hover:underline"
+                                )}
+                              >
+                                Why we ask
+                                <ChevronDown
+                                  className={cn("h-4 w-4 transition-transform", isWhyOpen && "rotate-180")}
+                                  aria-hidden="true"
+                                />
+                              </button>
+                              {isWhyOpen && (
+                                <div
+                                  id={whyContentId}
+                                  className="mt-2 rounded-lg border border-border/50 bg-muted/20 px-4 py-3 text-sm text-muted-foreground"
+                                >
+                                  {currentWhy ? <p>{currentWhy}</p> : null}
+                                  {isCompact && rangeDescription && (
+                                    <p className={cn(currentWhy ? "mt-2" : "", "text-muted-foreground")}>{rangeDescription}</p>
+                                  )}
+                                </div>
                               )}
                             </div>
                           )}
-                        </div>
-                      )}
-                      <div
-                        className={cn(
-                          "hidden items-center justify-between gap-3 pt-6 lg:flex",
-                          actionRowStack
-                        )}
-                      >
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={goToPreviousQuestion}
-                          disabled={stepIndex === 0 || isEvaluating}
-                          className={actionButtonStack}
-                        >
-                          Back
-                        </Button>
-                        <div
-                          className={cn(
-                            "flex items-center gap-3",
-                            actionRowStack
-                          )}
-                        >
-                          {!hasBuiltInUnsure && (
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className={cn("px-0 text-muted-foreground hover:text-foreground", actionButtonStack)}
-                              onClick={handleUnsure}
-                              disabled={isEvaluating}
-                              title="Mark as unknown and continue"
-                            >
-                              I’m not sure
-                            </Button>
-                          )}
-                          {allowSkip && (
+                          <div
+                            className={cn(
+                              "hidden items-center justify-between gap-3 pt-6 lg:flex",
+                              actionRowStack
+                            )}
+                          >
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={handleSkip}
-                              disabled={isEvaluating}
+                              onClick={goToPreviousQuestion}
+                              disabled={stepIndex === 0 || isEvaluating}
                               className={actionButtonStack}
                             >
-                              Skip
+                              Back
                             </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            onClick={handleSave}
-                            disabled={!readyToContinue || isEvaluating}
-                            className={cn(
-                              "relative z-10 inline-flex items-center justify-center rounded-xl px-4 h-10",
-                              "bg-zinc-900 text-white hover:bg-zinc-800",
-                              "border border-zinc-900",
-                              actionButtonStack
-                            )}
-                          >
-                            Continue
-                          </Button>
-                        </div>
-                      </div>
-                    </m.div>
-                  )}
-                </AnimatePresence>
+                            <div
+                              className={cn(
+                                "flex items-center gap-3",
+                                actionRowStack
+                              )}
+                            >
+                              {!hasBuiltInUnsure && (
+                                <Button
+                                  variant="link"
+                                  size="sm"
+                                  className={cn("px-0 text-muted-foreground hover:text-foreground", actionButtonStack)}
+                                  onClick={handleUnsure}
+                                  disabled={isEvaluating}
+                                  title="Mark as unknown and continue"
+                                >
+                                  I’m not sure
+                                </Button>
+                              )}
+                              {allowSkip && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={handleSkip}
+                                  disabled={isEvaluating}
+                                  className={actionButtonStack}
+                                >
+                                  Skip
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                onClick={handleSave}
+                                disabled={!readyToContinue || isEvaluating}
+                                className={cn(
+                                  "relative z-10 inline-flex items-center justify-center rounded-xl px-4 h-10",
+                                  "bg-zinc-900 text-white hover:bg-zinc-800",
+                                  "border border-zinc-900",
+                                  actionButtonStack
+                                )}
+                              >
+                                Continue
+                              </Button>
+                            </div>
+                          </div>
+                        </m.div>
+                      )}
+                    </AnimatePresence>
+                  </>
+                )}
               </div>
 
               <p className="text-xs text-muted-foreground">
@@ -2722,10 +3097,10 @@ export default function Screener({
 
           {/* Not a Fit Screen */}
           {flowState === "notAFit" && interimResult && (
-            <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50 p-8 shadow-lg">
+            <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-primary/5 to-orange-50 p-8 shadow-lg">
               <div className="flex flex-col items-center text-center space-y-4">
-                <div className="w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center">
-                  <HeartHandshake className="w-8 h-8 text-rose-500" />
+                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                  <HeartHandshake className="w-8 h-8 text-primary" />
                 </div>
                 <h2 className="text-2xl font-bold text-rose-900">This study may not be the best fit</h2>
                 <p className="text-rose-700 max-w-md">
@@ -2733,14 +3108,14 @@ export default function Screener({
                   But don&apos;t worry — there are many other studies that might be right for you.
                 </p>
                 {interimResult.triggered_excludes.length > 0 && (
-                  <div className="text-sm text-rose-600 bg-rose-100/50 rounded-lg px-4 py-2 mt-2">
+                  <div className="text-sm text-primary-strong bg-primary/10/50 rounded-lg px-4 py-2 mt-2">
                     <span className="font-medium">Reason:</span> An exclusion criterion was met
                   </div>
                 )}
                 <div className="flex flex-col sm:flex-row gap-3 pt-4">
                   <Button
                     size="lg"
-                    className="bg-rose-500 hover:bg-rose-600 text-white"
+                    className="bg-primary hover:bg-primary-strong text-white"
                     asChild
                   >
                     <Link href="/trials">Find other studies</Link>
@@ -2749,7 +3124,7 @@ export default function Screener({
                     variant="outline"
                     size="lg"
                     asChild
-                    className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                    className="border-rose-300 text-rose-700 hover:bg-primary/5"
                   >
                     <Link href={`/trial/${trial.nct_id}`}>View this trial anyway</Link>
                   </Button>
