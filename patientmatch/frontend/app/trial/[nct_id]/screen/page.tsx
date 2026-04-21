@@ -9,10 +9,11 @@ import { headers } from "next/headers";
 import { NextRequest } from "next/server";
 import { readProfileCookie } from "@/shared/profileCookie";
 import { pmqToUiQuestions } from "@/lib/pmqAdapter";
+import { parseAgeToYears } from "@/lib/trials/age";
 
 type PageProps = {
   params: Promise<{ nct_id: string }>;
-  searchParams: Promise<{ prefill?: string; debug?: string; mode?: string } | undefined>;
+  searchParams: Promise<{ debug?: string; mode?: string; age?: string; sex?: string; condition?: string; conditions?: string } | undefined>;
 };
 
 function getFriendlyTitle(title: string): string {
@@ -40,7 +41,7 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
     console.log("[trial:params]", { nct_id });
   }
   const resolvedSearchParams = (await searchParams) ?? {};
-  const { prefill, debug, mode: rawMode } = resolvedSearchParams;
+  const { debug, mode: rawMode } = resolvedSearchParams;
   const ageParam = resolvedSearchParams["age"];
   const sexParam = resolvedSearchParams["sex"];
   const conditionParam = resolvedSearchParams["condition"] ?? resolvedSearchParams["conditions"];
@@ -52,7 +53,6 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
   const proto = hdrs.get("x-forwarded-proto") ?? "https";
   const host = hdrs.get("host") ?? "localhost";
   const urlParams = new URLSearchParams();
-  if (prefill) urlParams.set("prefill", prefill);
   if (debug) urlParams.set("debug", debug);
   urlParams.set("mode", mode);
   const querySegment = urlParams.toString();
@@ -67,9 +67,9 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
 
   if (process.env.NODE_ENV !== "production") {
     const rawRes = await supabase
-      .from("trials")
+      .from("trials_serving_latest")
       .select(
-        "nct_id, title, sponsor, phase, status, status_bucket, conditions, states_list, questionnaire_json, quality_score",
+        "nct_id, title, display_title, sponsor, phase, status, status_bucket, conditions, states_list, questionnaire_json, quality_score, minimum_age, maximum_age, min_age_years, max_age_years, gender, site_count_us",
       )
       .eq("nct_id", nct_id)
       .single();
@@ -81,8 +81,8 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
     });
     if (rawRes.error) {
       const minimalRes = await supabase
-        .from("trials")
-        .select("nct_id, title, questionnaire_json")
+        .from("trials_serving_latest")
+        .select("nct_id, title, display_title, questionnaire_json, minimum_age, maximum_age, min_age_years, max_age_years, gender, site_count_us, states_list")
         .eq("nct_id", nct_id)
         .single();
       console.log("[trial:minimal fetch]", {
@@ -96,9 +96,9 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
 
   // Explicit column selection aligned to current trials schema
   let trialRes = await supabase
-    .from("trials")
+    .from("trials_serving_latest")
     .select(
-      "nct_id, title, sponsor, phase, status, status_bucket, conditions, states_list, questionnaire_json, quality_score",
+      "nct_id, title, display_title, sponsor, phase, status, status_bucket, conditions, states_list, questionnaire_json, quality_score, minimum_age, maximum_age, min_age_years, max_age_years, gender, site_count_us",
     )
     .eq("nct_id", normalizedNct)
     .single();
@@ -114,9 +114,9 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
     }
     // Try by internal numeric/string id with explicit columns
     const byId = await supabase
-      .from("trials")
+      .from("trials_serving_latest")
       .select(
-        "nct_id, title, sponsor, phase, status, status_bucket, conditions, states_list, questionnaire_json, quality_score",
+        "nct_id, title, display_title, sponsor, phase, status, status_bucket, conditions, states_list, questionnaire_json, quality_score, minimum_age, maximum_age, min_age_years, max_age_years, gender, site_count_us",
       )
       .eq("id", nct_id)
       .single();
@@ -128,7 +128,6 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
       // Redirect to canonical NCT path if we matched by internal id
       const canonicalParams = new URLSearchParams();
       canonicalParams.set("mode", mode);
-      if (prefill) canonicalParams.set("prefill", prefill);
       if (debug) canonicalParams.set("debug", debug);
       const canonicalQuery = canonicalParams.toString();
       const canonical = `/trial/${trial.nct_id.toUpperCase()}/screen${canonicalQuery ? `?${canonicalQuery}` : ""}`;
@@ -145,7 +144,7 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
     return (
       <main className="pb-16 pt-12" data-route="screener">
         <div className="pm-container">
-          <div className="mx-auto max-w-2xl rounded-none bg-white/90 p-8 text-center backdrop-blur-sm">
+          <div className="mx-auto max-w-2xl rounded-lg bg-white/90 p-8 text-center backdrop-blur-sm">
             <h1 className="pm-heading-2 text-foreground">Trial not found</h1>
             <p className="pm-body mt-3 text-muted-foreground">
               We couldn’t find this study. It may have been removed or is temporarily unavailable.
@@ -154,7 +153,7 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
               <Link className="underline" href="/trials">
                 Browse trials
               </Link>
-              <Link className="underline" href="/match">
+              <Link className="underline" href="/trials">
                 Try quick match
               </Link>
             </div>
@@ -175,6 +174,12 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
   }
 
   const initialProfile = profileCookie ?? null;
+  const selectedConditionSlug =
+    (typeof conditionParam === "string" && conditionParam.trim().length > 0
+      ? conditionParam.trim()
+      : Array.isArray(initialProfile?.conditions) && initialProfile.conditions.length > 0
+        ? initialProfile.conditions[0]
+        : null) ?? null;
   const profileForPmq = initialProfile
     ? {
       age_years: initialProfile.age,
@@ -187,16 +192,6 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
     profileForPmq,
   );
   const uiQuestions = mainQuestions; // Main questions for the screener flow
-
-  // Parse prefill data safely
-  let prefillData = {};
-  if (prefill) {
-    try {
-      prefillData = JSON.parse(decodeURIComponent(prefill));
-    } catch (error) {
-      console.warn('Failed to parse prefill data:', error);
-    }
-  }
 
   const querySeeds: Record<string, unknown> = {};
   const parsedAge = typeof ageParam === "string" ? parseInt(ageParam, 10) : NaN;
@@ -214,13 +209,21 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
     const cond = conditionParam.trim();
     querySeeds.condition = cond;
     querySeeds.conditions = [cond];
+    querySeeds.selected_condition = cond;
+    querySeeds.diagnosis_confirmed = true;
+    querySeeds.diagnosis = true;
+  } else if (selectedConditionSlug) {
+    querySeeds.condition = selectedConditionSlug;
+    querySeeds.conditions = [selectedConditionSlug];
+    querySeeds.selected_condition = selectedConditionSlug;
+    querySeeds.diagnosis_confirmed = true;
+    querySeeds.diagnosis = true;
   }
-  prefillData = { ...querySeeds, ...prefillData };
-  const initialAnswers = { ...pmqAnswers, ...prefillData };
+  const initialAnswers = { ...pmqAnswers, ...querySeeds };
 
   if (process.env.NODE_ENV !== "production") {
     console.info("[screener:prefill sources]", {
-      routeKeys: Object.keys(prefillData),
+      routeKeys: Object.keys(querySeeds),
       profileKeys: initialProfile
         ? Object.keys(initialProfile).filter(
           (key) => (initialProfile as Record<string, unknown>)[key] !== undefined,
@@ -229,6 +232,24 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
       precedence: "route_over_profile",
     });
   }
+
+  const displayTitle = trial.display_title || trial.title;
+  const minAgeYears =
+    typeof trial.min_age_years === "number" ? trial.min_age_years : parseAgeToYears(trial.minimum_age);
+  const maxAgeYears =
+    typeof trial.max_age_years === "number" ? trial.max_age_years : parseAgeToYears(trial.maximum_age);
+  const siteCount = typeof trial.site_count_us === "number" ? trial.site_count_us : null;
+  const states = Array.isArray(trial.states_list)
+    ? trial.states_list.filter(Boolean)
+    : [];
+  const statesPreview = states.slice(0, 4).join(", ");
+  const statesSuffix = states.length > 4 ? ` +${states.length - 4}` : "";
+  const sitesDisplay =
+    siteCount != null
+      ? `${siteCount} US site${siteCount === 1 ? "" : "s"}${statesPreview ? ` in ${statesPreview}${statesSuffix}` : ""}`
+      : statesPreview
+      ? `Sites in ${statesPreview}${statesSuffix}`
+      : null;
 
   return (
     <main className="relative min-h-screen pb-16 pt-12" data-route="screener">
@@ -239,14 +260,21 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
               Screener
             </p>
-            <h1 className="text-[32px] font-semibold leading-tight text-foreground md:text-[38px]">
+            <h1 className="font-heading text-[32px] font-semibold leading-tight text-foreground md:text-[38px]">
               Eligibility screening
             </h1>
             <p className="text-lg font-medium leading-relaxed text-foreground md:text-xl line-clamp-2">
-              {getFriendlyTitle(trial.title)}
+              {getFriendlyTitle(displayTitle)}
             </p>
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <span>Sponsored by {trial.sponsor || "Not listed"}</span>
+              <span aria-hidden="true">·</span>
+              <Link
+                href={`/trial/${trial.nct_id}`}
+                className="inline-flex items-center gap-1 text-sm font-medium text-primary transition hover:text-primary/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
+              >
+                Study details
+              </Link>
               <span aria-hidden="true">·</span>
               <Link
                 href={`https://clinicaltrials.gov/study/${trial.nct_id}`}
@@ -258,27 +286,34 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
                 <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
               </Link>
             </div>
+            {sitesDisplay && (
+              <p className="text-sm text-muted-foreground">
+                {sitesDisplay}
+              </p>
+            )}
           </header>
 
           <TrialScreenClient
             trial={{
               nct_id: trial.nct_id,
-              title: trial.title,
+              title: displayTitle,
               sponsor: trial.sponsor,
               condition: Array.isArray(trial.conditions)
                 ? trial.conditions[0]
                 : typeof trial.conditions === "string"
                   ? trial.conditions
                   : undefined,
-              conditionSlug: null,
-              min_age_years: null,
-              max_age_years: null,
-              gender: null,
+              conditionSlug: selectedConditionSlug,
+              min_age_years: minAgeYears,
+              max_age_years: maxAgeYears,
+              gender: trial.gender ?? null,
+              questionnaire_json: trial.questionnaire_json ?? null,
             }}
             precalculatedQuestions={uiQuestions}
             optionalQuestions={optionalQuestions}
             initialAnswers={initialAnswers}
             initialProfile={initialProfile}
+            profileForPmq={profileForPmq}
             showDebug={debug === "1"}
             clinicPreview={clinicPreview}
           />

@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { compactScreenerUI } from "@/config/uiFlags";
 import type { ProfileCookie } from "@/shared/profileCookie";
 import type { CriteriaJson, UiQuestion } from "@/lib/screener/types";
+import { pmqToUiQuestions, type UserProfile } from "@/lib/pmqAdapter";
+import { cn } from "@/lib/utils";
 
 function toFiniteNumber(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -54,6 +56,7 @@ type Trial = {
   min_age_years?: number | null;
   max_age_years?: number | null;
   gender?: string | null;
+  questionnaire_json?: any | null;
 };
 
 type GateProfile = {
@@ -201,54 +204,10 @@ type TrialScreenClientProps = {
   precalculatedQuestions?: UiQuestion[];
   optionalQuestions?: UiQuestion[];
   initialProfile?: ProfileCookie | null;
+  profileForPmq?: UserProfile;
   showDebug?: boolean;
   clinicPreview?: boolean;
 };
-
-function sanitizeProfileCandidate(candidate: unknown): ProfileCookie | null {
-  if (!candidate || typeof candidate !== "object") return null;
-  const record = candidate as Record<string, unknown>;
-  const sanitized: ProfileCookie = {};
-
-  if (typeof record.age === "number" && Number.isFinite(record.age) && record.age >= 0) {
-    sanitized.age = Math.round(record.age);
-  }
-
-  if (typeof record.sex === "string") {
-    const normalized = record.sex.toLowerCase();
-    if (normalized === "male" || normalized === "female" || normalized === "other") {
-      sanitized.sex = normalized;
-    }
-  }
-
-  if (typeof record.zip === "string") {
-    const trimmed = record.zip.trim();
-    if (trimmed.length >= 3 && trimmed.length <= 12) {
-      sanitized.zip = trimmed;
-    }
-  }
-
-  if (record.pregnancy === true || record.pregnancy === false) {
-    sanitized.pregnancy = record.pregnancy;
-  } else if (record.pregnancy === null) {
-    sanitized.pregnancy = null;
-  }
-
-  if (Array.isArray(record.conditions)) {
-    const safeConditions = Array.from(
-      new Set(
-        record.conditions
-          .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
-          .map((entry) => entry.trim()),
-      ),
-    );
-    if (safeConditions.length > 0) {
-      sanitized.conditions = safeConditions.slice(0, 12);
-    }
-  }
-
-  return Object.keys(sanitized).length > 0 ? sanitized : null;
-}
 
 function mergeProfiles(primary: ProfileCookie | null, secondary: ProfileCookie | null): ProfileCookie | null {
   const merged: ProfileCookie = {};
@@ -288,6 +247,7 @@ export default function TrialScreenClient({
   precalculatedQuestions,
   optionalQuestions = [],
   initialProfile = null,
+  profileForPmq,
   showDebug = false,
   clinicPreview = false,
 }: TrialScreenClientProps) {
@@ -303,32 +263,40 @@ export default function TrialScreenClient({
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [gateBypassed, setGateBypassed] = useState(false);
   const [profilePrefill, setProfilePrefill] = useState<ProfileCookie | null>(initialProfile ?? null);
+  const [forSelf, setForSelf] = useState<boolean>(
+    initialProfile?.for_self !== false, // default true unless explicitly false
+  );
   const handleProfileCleared = useCallback(() => {
     setProfilePrefill(null);
   }, []);
+
+  const handlePerspectiveToggle = () => {
+    setForSelf((prev) => !prev);
+    // Note: the profile save API doesn't accept for_self, so we keep this local only
+  };
+
+  const perspective = forSelf ? "self" : "other";
+
+  // Re-compute questions client-side so the perspective toggle takes effect instantly
+  const { mainQuestions: computedMain, optionalQuestions: computedOptional } = useMemo(() => {
+    const qJson = trial.questionnaire_json;
+    if (!qJson) {
+      return {
+        mainQuestions: precalculatedQuestions ?? [],
+        optionalQuestions: optionalQuestions,
+      };
+    }
+    return pmqToUiQuestions(qJson, profileForPmq, perspective);
+  }, [trial.questionnaire_json, profileForPmq, perspective, precalculatedQuestions, optionalQuestions]);
 
   useEffect(() => {
     setProfilePrefill((prev) => mergeProfiles(initialProfile ?? null, prev));
   }, [initialProfile]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.sessionStorage.getItem("pm_profile");
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      const sanitized = sanitizeProfileCandidate(parsed);
-      if (!sanitized) return;
-      setProfilePrefill((prev) => mergeProfiles(prev, sanitized));
-    } catch {
-      /* ignore storage issues */
-    }
-  }, []);
-
   const gateProfile = useMemo(() => {
     const base = deriveProfileFromAnswers(initialAnswers);
     return {
-      age: base.age ?? profilePrefill?.age,
+      age: base.age ?? profilePrefill?.age ?? undefined,
       sex: base.sex ?? profilePrefill?.sex ?? null,
       pregnancy:
         base.pregnancy !== undefined && base.pregnancy !== null
@@ -339,6 +307,7 @@ export default function TrialScreenClient({
   const gateAssessment = useMemo(() => assessGate(trial, gateProfile), [trial, gateProfile]);
 
   const shouldShowGate =
+    clinicPreview &&
     gateAssessment.shouldGate &&
     !gateBypassed &&
     answers === null &&
@@ -363,7 +332,7 @@ export default function TrialScreenClient({
         }}
         answers={answers}
         evaluation={evaluation}
-        optionalQuestions={optionalQuestions}
+        optionalQuestions={computedOptional}
         uiVariant={compact ? "compact" : "default"}
       />
     );
@@ -381,17 +350,39 @@ export default function TrialScreenClient({
 
   // Show screener
   return (
-    <Screener
-      trial={trial}
-      initialAnswers={initialAnswers}
-      precalculatedQuestions={precalculatedQuestions}
-      optionalQuestions={optionalQuestions}
-      initialProfile={profilePrefill ?? null}
-      onProfileCleared={handleProfileCleared}
-      onCompleted={handleCompleted}
-      showDebug={showDebug}
-      compact={compact}
-      clinicPreview={clinicPreview}
-    />
+    <div>
+      <div className="flex items-center justify-end gap-2 text-sm text-muted-foreground mb-3">
+        <span>Searching for someone else?</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={!forSelf}
+          onClick={handlePerspectiveToggle}
+          className={cn(
+            "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+            !forSelf ? "bg-blue-500" : "bg-muted",
+          )}
+        >
+          <span
+            className={cn(
+              "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+              !forSelf ? "translate-x-4" : "translate-x-1",
+            )}
+          />
+        </button>
+      </div>
+      <Screener
+        trial={trial}
+        initialAnswers={initialAnswers}
+        precalculatedQuestions={computedMain}
+        optionalQuestions={computedOptional}
+        initialProfile={profilePrefill ?? null}
+        onProfileCleared={handleProfileCleared}
+        onCompleted={handleCompleted}
+        showDebug={showDebug}
+        compact={compact}
+        clinicPreview={clinicPreview}
+      />
+    </div>
   );
 }
