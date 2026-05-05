@@ -110,6 +110,7 @@ let memoryWarningLogged = false;
 function createRateLimiter(): RateLimiter {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const redisDisabled = process.env.UPSTASH_REDIS_DISABLED === '1';
   const env = process.env.NODE_ENV;
   const isDevLike = env === 'development' || env === 'test';
 
@@ -117,10 +118,10 @@ function createRateLimiter(): RateLimiter {
     return new UpstashRateLimiter(url, token);
   }
 
-  if (isDevLike) {
+  if (redisDisabled || isDevLike) {
     if (!memoryWarningLogged) {
       console.warn(
-        '[rate-limit] UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN missing; using in-memory limiter.',
+        '[rate-limit] using in-memory limiter.',
       );
       memoryWarningLogged = true;
     }
@@ -132,7 +133,14 @@ function createRateLimiter(): RateLimiter {
   );
 }
 
-const limiter: RateLimiter = createRateLimiter();
+let limiter: RateLimiter | null = null;
+
+function getRateLimiter(): RateLimiter {
+  if (!limiter) {
+    limiter = createRateLimiter();
+  }
+  return limiter;
+}
 
 export function buildSharedRateLimitKey(ip: string): string {
   return `ip:${ip || 'unknown'}`;
@@ -140,7 +148,7 @@ export function buildSharedRateLimitKey(ip: string): string {
 
 export async function takeSharedRateLimit(ip: string): Promise<RateLimitState> {
   const identifier = buildSharedRateLimitKey(ip);
-  return limiter.limit(identifier);
+  return getRateLimiter().limit(identifier);
 }
 
 export function createRateLimitHeaders(state: RateLimitState): Record<string, string> {
