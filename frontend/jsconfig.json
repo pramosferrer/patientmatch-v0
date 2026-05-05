@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "module": "ES2020",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "jsx": "preserve"
+  }
+}

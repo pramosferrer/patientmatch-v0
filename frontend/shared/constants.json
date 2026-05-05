@@ -1,0 +1,19 @@
+{
+    "SUPPORTED_CONDITIONS": [
+        "amd",
+        "glaucoma",
+        "diabetic_retinopathy",
+        "cataracts"
+    ],
+    "MAX_TRAVEL_MILES_DEFAULT": 50,
+    "AGE_MIN": 18,
+    "AGE_MAX": 120,
+    "CRITERIA_SOURCES": [
+        "patient",
+        "site"
+    ],
+    "CRITERIA_TYPES": [
+        "inclusion",
+        "exclusion"
+    ]
+}
