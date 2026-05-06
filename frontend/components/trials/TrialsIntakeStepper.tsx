@@ -15,6 +15,7 @@ import { ChevronLeft, ChevronRight, Compass, Search, Loader2, Check, X } from "l
 
 type TrialsIntakeStepperProps = {
   profile: ProfileCookie | null;
+  forceIntake?: boolean;
 };
 
 const STORAGE_KEY = "pm_trials_guided_intake_v1";
@@ -42,19 +43,13 @@ type ConditionSearchInputProps = {
 };
 
 function ConditionSearchInput({ value, onChange, placeholder = "Type your condition..." }: ConditionSearchInputProps) {
-  const [inputValue, setInputValue] = useState(value);
   const [suggestions, setSuggestions] = useState<Array<{ slug: string; label: string }>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const debouncedInput = useDebounce(inputValue, 300);
-
-  // Sync with external value
-  useEffect(() => {
-    setInputValue(value);
-  }, [value]);
+  const debouncedInput = useDebounce(value, 300);
 
   // Fetch suggestions
   useEffect(() => {
@@ -88,16 +83,16 @@ function ConditionSearchInput({ value, onChange, placeholder = "Type your condit
   }, []);
 
   const handleSelect = (label: string) => {
-    setInputValue(label);
     onChange(label);
     setIsFocused(false);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setInputValue(val);
-    // Also update parent immediately for free-text
-    onChange(val);
+    onChange(e.target.value);
+  };
+
+  const handleNativeInput = (e: React.FormEvent<HTMLInputElement>) => {
+    onChange(e.currentTarget.value);
   };
 
   const showDropdown = isFocused && (suggestions.length > 0 || isLoading);
@@ -110,8 +105,9 @@ function ConditionSearchInput({ value, onChange, placeholder = "Type your condit
         <Input
           ref={inputRef}
           id="guided-condition"
-          value={inputValue}
+          value={value}
           onChange={handleInputChange}
+          onInput={handleNativeInput}
           onFocus={() => setIsFocused(true)}
           placeholder={placeholder}
           className="h-11 pl-10 pr-10"
@@ -152,11 +148,11 @@ function ConditionSearchInput({ value, onChange, placeholder = "Type your condit
   );
 }
 
-export default function TrialsIntakeStepper({ profile }: TrialsIntakeStepperProps) {
+export default function TrialsIntakeStepper({ profile, forceIntake: forceIntakeProp = false }: TrialsIntakeStepperProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const forceIntake = searchParams.get("intake") === "1";
+  const forceIntake = forceIntakeProp || searchParams.get("intake") === "1";
   const queryCondition = searchParams.get("condition") || searchParams.get("conditions") || "";
   const queryZip = searchParams.get("zip") || "";
   const queryAge = searchParams.get("age") || "";
@@ -225,7 +221,7 @@ export default function TrialsIntakeStepper({ profile }: TrialsIntakeStepperProp
   );
 
   const isVisible =
-    isHydrated && (forceIntake || (!isDismissed && !hasActiveFilters && !hasExistingProfile));
+    forceIntake || (isHydrated && !isDismissed && !hasActiveFilters && !hasExistingProfile);
 
   const canContinue = stepIndex === 0 ? condition.trim().length > 0 : true;
   const isLastStep = stepIndex === STEPS.length - 1;
@@ -311,7 +307,11 @@ export default function TrialsIntakeStepper({ profile }: TrialsIntakeStepperProp
   }
 
   return (
-    <section className="mb-4 rounded-2xl border border-border/60 bg-white/90 shadow-sm">
+    <section
+      data-testid="trials-intake-stepper"
+      data-hydrated={isHydrated ? "true" : "false"}
+      className="mb-4 rounded-2xl border border-border/60 bg-white/90 shadow-sm"
+    >
       <div className="flex flex-col gap-4 p-4 md:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">

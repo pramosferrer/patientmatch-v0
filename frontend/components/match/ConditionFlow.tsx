@@ -42,7 +42,7 @@ export default function ConditionFlow({ onShortlist, patientProfile }: Condition
   const [zip, setZip] = useState(patientProfile?.location?.zip || "");
   const [loading, setLoading] = useState(false);
   const { toasts, addToast, removeToast } = useToast();
-  
+
   // Catalog state
   const [catalog, setCatalog] = useState<ConditionCatalog | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -61,12 +61,9 @@ export default function ConditionFlow({ onShortlist, patientProfile }: Condition
         setCatalogLoading(true);
         const res = await fetch('/api/conditions');
         const data = await res.json();
-        
+
         if (data.success) {
           setCatalog(data.catalog);
-          if (isDev) {
-            console.log(`📋 Loaded condition catalog: ${data.catalog.all.length} conditions (${data.catalog.featured.length} featured)`);
-          }
         } else {
           throw new Error(data.error || 'Failed to load catalog');
         }
@@ -77,29 +74,29 @@ export default function ConditionFlow({ onShortlist, patientProfile }: Condition
         setCatalogLoading(false);
       }
     };
-    
+
     loadCatalog();
   }, [addToast, isDev]);
 
   // Fuzzy search with synonyms
   const searchConditions = (searchTerm: string): ConditionItem[] => {
     if (!catalog || !searchTerm.trim()) return catalog?.all ?? [];
-    
+
     const term = searchTerm.toLowerCase();
     return catalog.all.filter(condition => {
       // Search in label
       if (condition.label.toLowerCase().includes(term)) return true;
-      
+
       // Search in synonyms
       if (condition.synonyms) {
-        return condition.synonyms.some(synonym => 
+        return condition.synonyms.some(synonym =>
           synonym.toLowerCase().includes(term)
         );
       }
-      
+
       // Search in slug (as fallback)
       if (condition.slug.replace(/_/g, ' ').toLowerCase().includes(term)) return true;
-      
+
       return false;
     });
   };
@@ -110,17 +107,17 @@ export default function ConditionFlow({ onShortlist, patientProfile }: Condition
   // Keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!open || filteredConditions.length === 0) return;
-    
+
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setSelectedIndex(prev => 
+        setSelectedIndex(prev =>
           prev < filteredConditions.length - 1 ? prev + 1 : 0
         );
         break;
       case 'ArrowUp':
         e.preventDefault();
-        setSelectedIndex(prev => 
+        setSelectedIndex(prev =>
           prev > 0 ? prev - 1 : filteredConditions.length - 1
         );
         break;
@@ -144,7 +141,7 @@ export default function ConditionFlow({ onShortlist, patientProfile }: Condition
     setQuery(selectedCondition.label);
     setOpen(false);
     setSelectedIndex(-1);
-    
+
     // Show warning if condition has no trials
     if (selectedCondition.count === 0) {
       setShowEmptyWarning(true);
@@ -214,7 +211,7 @@ export default function ConditionFlow({ onShortlist, patientProfile }: Condition
         const errorMessage = errorData.message || `Server error (${res.status})`;
         throw new Error(errorMessage);
       }
-      
+
       const data = await res.json();
       onShortlist(data.trials || []);
       addToast("Found trials successfully!", "success");
@@ -245,12 +242,12 @@ export default function ConditionFlow({ onShortlist, patientProfile }: Condition
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="rounded-2xl border border-pm-border p-4">
           <Label className="text-sm font-medium text-pm-ink">Condition *</Label>
-          
+
           {/* Loading state */}
           {catalogLoading && (
             <div className="mt-2 text-sm text-pm-muted">Loading conditions...</div>
           )}
-          
+
           {/* Featured chips */}
           {catalog && (
             <div className="mt-2 flex flex-wrap gap-2">
@@ -258,9 +255,9 @@ export default function ConditionFlow({ onShortlist, patientProfile }: Condition
                 <button
                   key={item.slug}
                   type="button"
-                  onClick={() => { 
-                    setCondition(item.slug); 
-                    setQuery(item.label); 
+                  onClick={() => {
+                    setCondition(item.slug);
+                    setQuery(item.label);
                     setShowEmptyWarning(false); // Clear warning when selecting chip
                   }}
                   className={`rounded-full px-3 py-1 text-sm border ${condition===item.slug? 'bg-pm-primary text-white border-pm-primary':'border-pm-border hover:bg-white/70'}`}
@@ -283,9 +280,9 @@ export default function ConditionFlow({ onShortlist, patientProfile }: Condition
                 id="condition-search"
                 type="text"
                 value={query}
-                onChange={(e) => { 
-                  setQuery(e.target.value); 
-                  setOpen(true); 
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setOpen(true);
                   setSelectedIndex(-1);
                   setShowEmptyWarning(false); // Clear warning when typing
                 }}
@@ -344,7 +341,7 @@ export default function ConditionFlow({ onShortlist, patientProfile }: Condition
                   No conditions found for &quot;{query}&quot;. Try searching for synonyms or related terms.
                 </div>
               )}
-              
+
               {/* Empty condition warning */}
               {showEmptyWarning && (
                 <div className="mt-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800">
@@ -365,19 +362,19 @@ export default function ConditionFlow({ onShortlist, patientProfile }: Condition
 
         <div className="rounded-2xl border border-pm-border p-4">
           <Label className="text-sm font-medium text-pm-ink">Age *</Label>
-          <input 
-            className="mt-2 w-full rounded-xl border border-pm-border p-2" 
-            placeholder="e.g., 55" 
-            value={age} 
-            onChange={(e) => setAge(e.target.value)} 
+          <input
+            className="mt-2 w-full rounded-xl border border-pm-border p-2"
+            placeholder="e.g., 55"
+            value={age}
+            onChange={(e) => setAge(e.target.value)}
           />
         </div>
 
         <div className="rounded-2xl border border-pm-border p-4">
           <Label className="text-sm font-medium text-pm-ink">Sex *</Label>
-          <select 
-            className="pm-native-select mt-2 w-full rounded-xl border border-pm-border p-2" 
-            value={sex} 
+          <select
+            className="pm-native-select mt-2 w-full rounded-xl border border-pm-border p-2"
+            value={sex}
             onChange={(e) => setSex(e.target.value)}
           >
             <option value="">Select sex</option>
@@ -388,27 +385,27 @@ export default function ConditionFlow({ onShortlist, patientProfile }: Condition
 
         <div className="rounded-2xl border border-pm-border p-4">
           <Label className="text-sm font-medium text-pm-ink">Country</Label>
-          <input 
-            className="mt-2 w-full rounded-xl border border-pm-border p-2" 
-            value={country} 
-            onChange={(e) => setCountry(e.target.value)} 
+          <input
+            className="mt-2 w-full rounded-xl border border-pm-border p-2"
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
           />
         </div>
 
         <div className="rounded-2xl border border-pm-border p-4 sm:col-span-2">
           <Label className="text-sm font-medium text-pm-ink">ZIP/Postal Code</Label>
-          <input 
-            className="mt-2 w-full rounded-xl border border-pm-border p-2" 
-            value={zip} 
-            onChange={(e) => setZip(e.target.value)} 
+          <input
+            className="mt-2 w-full rounded-xl border border-pm-border p-2"
+            value={zip}
+            onChange={(e) => setZip(e.target.value)}
           />
         </div>
       </div>
 
       <div className="mt-6 flex justify-center">
-        <button 
-          onClick={handleShortlist} 
-                      className="rounded-xl bg-pm-primary text-white px-5 py-2 hover:opacity-90" 
+        <button
+          onClick={handleShortlist}
+                      className="rounded-xl bg-pm-primary text-white px-5 py-2 hover:opacity-90"
           disabled={loading}
         >
           {loading ? "Finding trials..." : "Find My Matches"}

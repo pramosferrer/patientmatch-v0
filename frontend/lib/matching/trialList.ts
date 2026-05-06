@@ -12,6 +12,13 @@ export const DEFAULT_TRIALS_SORT: SortSpec[] = [
   { column: "title", ascending: true },
 ];
 
+export const PATIENT_READINESS_TRIALS_SORT: SortSpec[] = [
+  { column: "patient_readiness_score", ascending: false, nullsFirst: false },
+  { column: "quality_score", ascending: false, nullsFirst: false },
+  { column: "site_count_us", ascending: false, nullsFirst: false },
+  { column: "title", ascending: true },
+];
+
 function toNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -89,7 +96,7 @@ export function parseStatusBuckets(statusBucketRaw: string): string[] {
     ? statusBucketRaw
       .split(",")
       .map((value) => value.trim().toLowerCase())
-      .filter(Boolean)
+      .filter((value) => value && value !== "all")
     : [];
 }
 

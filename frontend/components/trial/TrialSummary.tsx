@@ -1,4 +1,4 @@
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, ClipboardCheck } from "lucide-react";
 import type { TrialInsights } from "@/components/trial/TrialEnrichments";
 import { normalizePossiblyEncodedJson } from "@/lib/trials/json";
 import { cn } from "@/lib/utils";
@@ -56,20 +56,25 @@ export default function TrialSummary({
   if (!hasResolvedSummary && !hasActions) return null;
 
   return (
-    <section className="rounded-2xl border border-border/60 bg-white/90 p-6 shadow-[0_24px_48px_rgba(15,23,42,0.08)]">
+    <section className="rounded-2xl border border-border/60 bg-white/90 p-6 shadow-[0_2px_4px_rgba(45,80,60,0.05),_0_16px_48px_-12px_rgba(45,80,60,0.12)]">
       <div className={cn("grid gap-6", hasResolvedSummary && hasActions ? "md:grid-cols-2" : "")}>
         {hasResolvedSummary && (
           <div className="space-y-2">
-            <h2 className="text-xl font-semibold text-foreground">About this study</h2>
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5 text-primary" />
+              <h2 className="text-xl font-display font-normal text-foreground">What this study is about</h2>
+            </div>
             <p className="text-sm leading-relaxed text-muted-foreground">{resolvedSummary}</p>
-            <p className="text-xs text-muted-foreground">Based on ClinicalTrials.gov records.</p>
+            <p className="text-xs text-muted-foreground">
+              Simplified from trial records by PatientMatch.
+            </p>
           </div>
         )}
 
         {hasActions && (
           <div className="space-y-3">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              What participants do
+              What you may be asked to do
             </h3>
             <ul className="space-y-2 text-sm text-muted-foreground">
               {visibleActions.map((action, index) => (

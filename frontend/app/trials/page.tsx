@@ -3,13 +3,14 @@ export const revalidate = 0;
 
 import { cookies } from "next/headers";
 import { unstable_noStore as noStore } from "next/cache";
-import Link from "next/link";
+
 import LoadMoreTrials from "@/components/trials/LoadMoreTrials";
 import { TrialsGridSkeleton } from "@/components/trials/TrialsGridSkeleton";
 import JsonLd from "@/components/trials/JsonLd";
 import TrialsFilterBar from "@/components/trials/TrialsFilterBar";
 import TrialsSmartSuggestions from "@/components/trials/TrialsSmartSuggestions";
 import TrialsMapClient from "@/components/trials/TrialsMapClient";
+import TrialsIntakeStepper from "@/components/trials/TrialsIntakeStepper";
 import { Suspense, lazy } from "react";
 import { Button } from "@/components/ui/button";
 import { Search, AlertCircle } from "lucide-react";
@@ -20,23 +21,33 @@ import TrackEventOnMount from "@/components/analytics/TrackEventOnMount";
 
 const CompareDrawer = lazy(() => import("@/components/trials/CompareDrawer"));
 
-function hasDiscoveryInput(searchParams: Record<string, string | string[] | undefined>): boolean {
-  return [
-    searchParams.q,
-    searchParams.condition,
-    searchParams.conditions,
-    searchParams.zip,
-    searchParams.sex,
-    searchParams.age,
-    searchParams.radius,
-    searchParams.status_bucket,
-    searchParams.status,
-    searchParams.phases,
-  ].some((value) => {
-    if (Array.isArray(value)) return value.some((entry) => entry.trim().length > 0);
-    return typeof value === "string" && value.trim().length > 0;
-  });
+
+function formatCaughtError(err: unknown) {
+  if (err instanceof Error) {
+    return JSON.stringify({
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+    });
+  }
+
+  if (err && typeof err === "object") {
+    const fields = Object.fromEntries(
+      Reflect.ownKeys(err).map((key) => [
+        String(key),
+        (err as Record<PropertyKey, unknown>)[key],
+      ]),
+    );
+    return JSON.stringify({
+      type: Object.prototype.toString.call(err),
+      stringValue: String(err),
+      fields,
+    });
+  }
+
+  return String(err);
 }
+
 
 export default async function TrialsPage({
   searchParams
@@ -53,51 +64,53 @@ export default async function TrialsPage({
     const view = typeof spSync.view === "string" ? spSync.view : "list";
     const isMapView = view === "map";
 
-    if (!hasDiscoveryInput(spSync)) {
+    // Always fetch trials — no empty-state gate.
+    // When no filters are active, TrialsFilterBar shows a ColdArrivalBanner
+    // with inline condition + ZIP inputs so patients can start searching on this page.
+
+    const cookieStore = await cookies();
+    const profileCookieStr = cookieStore.get("pm_profile")?.value;
+    let profile = null;
+    if (profileCookieStr) {
+      try {
+        profile = await import("@/shared/profileCookie").then(m => m.decryptProfileToken(profileCookieStr));
+      } catch {
+        // Profile cookie unreadable (e.g. missing PII_SECRET in env) — proceed without profile
+      }
+    }
+
+    const forceIntake = spSync.intake === "1";
+    const hasIntakeResultsContext = Boolean(
+      spSync.condition ||
+      spSync.conditions ||
+      spSync.q ||
+      spSync.zip ||
+      spSync.age ||
+      spSync.sex ||
+      spSync.phases ||
+      spSync.status ||
+      spSync.status_bucket,
+    );
+
+    if (forceIntake && !hasIntakeResultsContext) {
       return (
         <div className="min-h-screen bg-background">
-          <Suspense fallback={null}>
-            <TrialsFilterBar
-              totalCount={0}
-              effectiveCondition=""
-              effectiveZip=""
-              expansionApplied={false}
-              expansionNearestMiles={null}
-            />
-          </Suspense>
-          <main className="pb-24 pt-8">
+          <TrackEventOnMount
+            event="patient_trials_view"
+            props={{
+              intake: true,
+            }}
+          />
+          <main className="pb-24 pt-10">
             <div className="pm-container">
-              <div className="rounded-2xl border border-border/40 bg-surface-sage/30 p-10 text-center">
-                <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-                  <Search className="h-6 w-6 text-primary" />
-                </div>
-                <h1 className="text-2xl font-semibold text-foreground">
-                  Search by condition to see matching trials
-                </h1>
-                <p className="mx-auto mt-3 max-w-md text-muted-foreground">
-                  PatientMatch works best when you start with a condition, symptom, or diagnosis.
-                  No account or contact information is required.
-                </p>
-                <div className="mt-6 flex flex-wrap justify-center gap-3">
-                  <Button variant="brand" asChild>
-                    <Link href="/conditions">Browse conditions</Link>
-                  </Button>
-                  <Button variant="outline" asChild>
-                    <Link href="/">Start from the homepage</Link>
-                  </Button>
-                </div>
-              </div>
+              <Suspense fallback={null}>
+                <TrialsIntakeStepper profile={profile} forceIntake />
+              </Suspense>
             </div>
           </main>
         </div>
       );
     }
-
-    const cookieStore = await cookies();
-    const profileCookieStr = cookieStore.get("pm_profile")?.value;
-    const profile = profileCookieStr
-      ? await import("@/shared/profileCookie").then(m => m.decryptProfileToken(profileCookieStr))
-      : null;
 
     const trialsResult = await fetchTrials({ searchParams: spSync, profile });
 
@@ -115,15 +128,21 @@ export default async function TrialsPage({
       effectiveRadius,
       expansionApplied,
       expansionNearestMiles,
+      defaultRecruitingApplied,
+      locationSearchFailed,
     } = trialsResult;
 
-    // Fetch suggestion counts with resolved geo + condition context (COUNT-only, cheap)
-    const refinedCounts = await fetchFilterCounts({
-      conditionFilterValues,
-      nearbyIds,
-      currentPhases: phases,
-      currentStatusBucket: statusBucket,
-    });
+    // Fetch suggestion counts only when a condition/location filter is active.
+    // Without a filter these are full-table COUNT queries that time out.
+    const hasFilterContext = conditionFilterValues.length > 0 && !nearbyIds;
+    const refinedCounts = hasFilterContext
+      ? await fetchFilterCounts({
+          conditionFilterValues,
+          nearbyIds,
+          currentPhases: phases,
+          currentStatusBucket: statusBucket,
+        })
+      : {};
 
     return (
       <div className="min-h-screen bg-background">
@@ -174,13 +193,32 @@ export default async function TrialsPage({
         ) : (
 
           /* ── List view ────────────────────────────────────────────────── */
-          <main className="pb-24 pt-6">
+          <main className="pb-24 pt-10">
             <div className="pm-container">
               <Suspense fallback={null}>
                 <RestoreSearch />
               </Suspense>
+              {spSync.intake === "1" && (
+                <Suspense fallback={null}>
+                  <TrialsIntakeStepper profile={profile} forceIntake />
+                </Suspense>
+              )}
 
               <div className="mt-2 flex flex-col gap-6">
+                {locationSearchFailed && effectiveZip && trialsData.length > 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Nearby-site search for {effectiveZip} is taking too long right now, so we&apos;re showing nationwide{" "}
+                    recruiting studies. Try again later or clear the location filter to browse normally.
+                  </div>
+                )}
+                {defaultRecruitingApplied && trialsData.length > 0 && (
+                  <p className="text-[12.5px] text-muted-foreground/60">
+                    Showing actively enrolling studies.{" "}
+                    <a href="/trials?status_bucket=all" className="underline underline-offset-2 hover:text-foreground transition-colors">
+                      See all statuses
+                    </a>
+                  </p>
+                )}
                 {trialsData.length > 0 ? (
                   <Suspense fallback={<TrialsGridSkeleton count={8} />}>
                     <LoadMoreTrials
@@ -221,7 +259,7 @@ export default async function TrialsPage({
     );
 
   } catch (err) {
-    console.error("Trials page error", err);
+    console.error("Trials page error", formatCaughtError(err));
     return (
       <main className="min-h-screen bg-background pb-16 pt-10">
         <div className="pm-container">

@@ -31,6 +31,18 @@ begin
     end if;
   end if;
 
+  if to_regclass('public.trial_sites') is not null then
+    execute 'alter table public.trial_sites enable row level security';
+    if not exists (
+      select 1 from pg_policies
+      where schemaname = 'public'
+        and tablename = 'trial_sites'
+        and policyname = 'Allow anon read on trial_sites'
+    ) then
+      execute 'create policy "Allow anon read on trial_sites" on public.trial_sites for select to anon using (true)';
+    end if;
+  end if;
+
   if to_regclass('public.pipeline_releases') is not null then
     execute 'alter table public.pipeline_releases enable row level security';
     if not exists (

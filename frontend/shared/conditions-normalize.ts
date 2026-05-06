@@ -129,7 +129,7 @@ const ALIASES: Record<string, string> = {
   'obesity prevention': 'obesity',
   'overweight and obesity': 'obesity',
   'morbid obesity': 'obesity',
-  // Depression - consolidate variants  
+  // Depression - consolidate variants
   'major depressive disorder': 'mdd',
   'major depression': 'mdd',
   'treatment resistant depression': 'mdd',
@@ -258,8 +258,8 @@ export function toConditionSlug(input: string | null | undefined): string {
   // already a valid slug
   if (VALID_SLUGS.has(cleaned)) return cleaned;
 
-  // Final fallback: slugify the cleaned input
-  return cleaned.replace(/\s+/g, '_');
+  // Final fallback: slugify the cleaned input into the snake_case form used by trial rows.
+  return cleaned.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
 export function normalizeConditionList(raw: string[] | null | undefined): { slug: string; label: string }[] {

@@ -75,10 +75,10 @@ export default function ExclusionCallout({
   const remaining = Math.max(0, items.length - visibleItems.length);
 
   return (
-    <section className="rounded-xl border border-caution/20 bg-caution-soft p-5">
-      <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-        <AlertTriangle className="h-4 w-4 text-caution" aria-hidden="true" />
-        <span>Common exclusions</span>
+    <section className="rounded-2xl border border-caution/30 bg-caution-soft p-6 shadow-[0_2px_4px_rgba(45,80,60,0.05),_0_16px_48px_-12px_rgba(45,80,60,0.12)]">
+      <div className="flex items-center gap-2">
+        <AlertTriangle className="h-5 w-5 text-caution" aria-hidden="true" />
+        <h2 className="text-xl font-display font-normal text-foreground">Common exclusions</h2>
       </div>
 
       <ul className="mt-3 space-y-2 text-sm text-muted-foreground">

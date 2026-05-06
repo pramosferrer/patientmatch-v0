@@ -1,101 +1,147 @@
-"use client";
+"use strict";
 
 import { useMemo } from "react";
-import { Activity, Route } from "lucide-react";
+import { ClipboardCheck, Route, Syringe, Stethoscope, FileText, Pill, Activity, FlaskConical, type LucideIcon } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 
-function normalizeScore(value?: number | string | null): number | null {
-  if (value == null) return null;
-  const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(parsed)) return null;
-  return Math.max(0, Math.min(100, Math.round(parsed)));
-}
-
-function scoreToLabel(score: number): string {
-  if (score < 34) return "Low";
-  if (score < 67) return "Moderate";
-  return "High";
-}
-
-function scoreToTone(score: number): string {
-  if (score < 34) return "bg-affirm";
-  if (score < 67) return "bg-caution";
-  return "bg-urgency";
-}
-
 type ParticipationEffortProps = {
-  burdenScore?: number | string | null;
-  logisticsScore?: number | string | null;
+  isRemote?: boolean;
+  interventionModes?: string[] | null;
+  drugRoutes?: string[] | null;
+  masking?: string | null;
+  allocation?: string | null;
+  interventionModel?: string | null;
+};
+
+// Map route to a user-friendly label and icon
+function getRouteInfo(route: string) {
+  const norm = route.toLowerCase();
+  if (norm.includes("oral")) return { label: "Oral", icon: Pill };
+  if (norm.includes("intravenous") || norm.includes("iv") || norm.includes("infusion") || norm.includes("injection")) return { label: "Injection / IV", icon: Syringe };
+  return { label: route, icon: Syringe };
+}
+
+type InterventionBadge = {
+  label: string;
+  icon: LucideIcon;
 };
 
 export default function ParticipationEffort({
-  burdenScore,
-  logisticsScore,
+  isRemote,
+  interventionModes,
+  drugRoutes,
+  masking,
+  allocation,
+  interventionModel,
 }: ParticipationEffortProps) {
-  const prefersReducedMotion = useReducedMotion();
-  const burden = useMemo(() => normalizeScore(burdenScore), [burdenScore]);
-  const logistics = useMemo(() => normalizeScore(logisticsScore), [logisticsScore]);
+  const hasData = !!(isRemote != null || interventionModes?.length || drugRoutes?.length || allocation || masking);
 
-  if (burden == null && logistics == null) return null;
+  if (!hasData) return null;
+
+  // Determine what intervention badges to show
+  const interventionBadges: InterventionBadge[] = [];
+  if (drugRoutes && drugRoutes.length > 0) {
+    drugRoutes.slice(0, 2).forEach((route) => {
+      interventionBadges.push(getRouteInfo(route));
+    });
+  } else if (interventionModes && interventionModes.length > 0) {
+    interventionModes.slice(0, 2).forEach((mode) => {
+      const norm = mode.toLowerCase();
+      if (norm.includes("medication") || norm.includes("drug")) {
+        interventionBadges.push({ label: "Medication", icon: Pill });
+      } else if (norm.includes("procedure") || norm.includes("surgery")) {
+        interventionBadges.push({ label: "Procedure", icon: Stethoscope });
+      } else if (norm.includes("behavioral")) {
+        interventionBadges.push({ label: "Behavioral", icon: ClipboardCheck });
+      } else {
+        interventionBadges.push({ label: mode, icon: Stethoscope });
+      }
+    });
+  }
+
+  const isRandomized = allocation?.toUpperCase() === "RANDOMIZED";
+  const isSingleGroup = interventionModel?.toUpperCase() === "SINGLE_GROUP" || allocation?.toUpperCase() === "NON_RANDOMIZED";
+  const isBlinded = masking && !masking.toUpperCase().includes("NONE") && masking.trim() !== "";
+  
+  let designLabel = "";
+  let designDesc = "";
+  if (isSingleGroup) {
+    designLabel = "All receive treatment";
+    designDesc = "Everyone gets the investigational treatment.";
+  } else if (isRandomized && isBlinded) {
+    designLabel = "Randomized & Blinded";
+    designDesc = "You may get a placebo/standard care, and you won't know which.";
+  } else if (isRandomized) {
+    designLabel = "Randomized (Open Label)";
+    designDesc = "You are randomly assigned, but you will know your treatment.";
+  } else {
+    designLabel = "Standard assignment";
+    designDesc = "Assignment is predetermined by the study protocol.";
+  }
 
   return (
-    <section className="rounded-2xl border border-border/60 bg-white/90 p-6 shadow-[0_24px_48px_rgba(15,23,42,0.08)]">
-      <div className="space-y-2">
-        <h2 className="text-xl font-semibold text-foreground">Participation effort</h2>
-        <p className="text-sm text-muted-foreground">
-          Estimated from trial records. Details can vary by site.
-        </p>
+    <section className="rounded-2xl border border-border/60 bg-white/90 p-6 shadow-[0_2px_4px_rgba(45,80,60,0.05),_0_16px_48px_-12px_rgba(45,80,60,0.12)]">
+      <div className="space-y-2 flex items-center gap-2">
+        <ClipboardCheck className="h-5 w-5 text-primary" />
+        <h2 className="text-xl font-display font-normal text-foreground">Participation Burden</h2>
       </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        What&apos;s physically and logistically required of participants.
+      </p>
 
-      <div className="mt-5 space-y-4">
-        {burden != null && (
-          <div className="rounded-xl border border-border/40 bg-white/60 p-4">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <Activity className="h-4 w-4 text-muted-foreground/70" aria-hidden="true" />
-              <span>Time + visits</span>
-            </div>
-            <div className="mt-3 flex items-center justify-between text-sm">
-              <span className="font-semibold text-foreground">{scoreToLabel(burden)}</span>
-              <span className="text-muted-foreground">{burden}%</span>
-            </div>
-            <div className="mt-2 h-2 w-full rounded-full bg-muted/40">
-              <motion.div
-                initial={prefersReducedMotion ? false : { width: 0 }}
-                whileInView={prefersReducedMotion ? undefined : { width: `${burden}%` }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-                viewport={{ once: true, amount: 0.4 }}
-                style={prefersReducedMotion ? { width: `${burden}%` } : undefined}
-                className={`h-2 rounded-full ${scoreToTone(burden)}`}
-              />
-            </div>
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Box 1: Logistics */}
+        <div className="rounded-xl border border-border/40 bg-white/60 p-4 flex flex-col justify-between">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <Route className="h-4 w-4 text-muted-foreground/70" aria-hidden="true" />
+            <span>Logistics & Travel</span>
           </div>
-        )}
+          <div className="mt-3">
+            <span className="font-medium text-foreground">
+              {isRemote ? "Remote / At-home" : "In-person visits"}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {isRemote ? "Some or all participation from home" : "Requires travel to a study site"}
+          </p>
+        </div>
 
-        {logistics != null && (
-          <div className="rounded-xl border border-border/40 bg-white/60 p-4">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <Route className="h-4 w-4 text-muted-foreground/70" aria-hidden="true" />
-              <span>Logistics</span>
-            </div>
-            <div className="mt-3 flex items-center justify-between text-sm">
-              <span className="font-semibold text-foreground">{scoreToLabel(logistics)}</span>
-              <span className="text-muted-foreground">{logistics}%</span>
-            </div>
-            <div className="mt-2 h-2 w-full rounded-full bg-muted/40">
-              <motion.div
-                initial={prefersReducedMotion ? false : { width: 0 }}
-                whileInView={prefersReducedMotion ? undefined : { width: `${logistics}%` }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-                viewport={{ once: true, amount: 0.4 }}
-                style={prefersReducedMotion ? { width: `${logistics}%` } : undefined}
-                className={`h-2 rounded-full ${scoreToTone(logistics)}`}
-              />
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Logistics difficulty varies by site location and availability.
-            </p>
+        {/* Box 2: Physical Intervention */}
+        <div className="rounded-xl border border-border/40 bg-white/60 p-4 flex flex-col justify-between">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <Syringe className="h-4 w-4 text-muted-foreground/70" aria-hidden="true" />
+            <span>Physical Intervention</span>
           </div>
-        )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {interventionBadges.length > 0 ? (
+              interventionBadges.map((badge, idx) => {
+                const Icon = badge.icon;
+                return (
+                  <span key={idx} className="inline-flex items-center gap-1.5 rounded-md bg-muted/50 px-2.5 py-1 text-sm font-medium text-foreground border border-border/50">
+                    <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                    {badge.label}
+                  </span>
+                );
+              })
+            ) : (
+              <span className="font-medium text-foreground">Standard</span>
+            )}
+          </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">How treatment is administered</p>
+        </div>
+
+        {/* Box 3: Placebo / Randomization Risk */}
+        <div className="rounded-xl border border-border/40 bg-white/60 p-4 flex flex-col justify-between">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <Activity className="h-4 w-4 text-muted-foreground/70" aria-hidden="true" />
+            <span>Treatment Assignment</span>
+          </div>
+          <div className="mt-3">
+            <span className="font-medium text-foreground">{designLabel}</span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">{designDesc}</p>
+        </div>
+
       </div>
     </section>
   );

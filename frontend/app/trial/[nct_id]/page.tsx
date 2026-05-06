@@ -12,8 +12,6 @@ import TrialHero from "@/components/trial/TrialHero";
 import AtAGlance from "@/components/trial/AtAGlance";
 import ExclusionCallout from "@/components/trial/ExclusionCallout";
 import ParticipationEffort from "@/components/trial/ParticipationEffort";
-import TreatmentSnapshot from "@/components/trial/TreatmentSnapshot";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { decryptProfileToken } from "@/shared/profileCookie";
 import { resolveZipToLatLon } from "@/shared/geo";
 
@@ -171,7 +169,14 @@ export default async function TrialDetailPage({ params, searchParams }: PageProp
   const supabase = getServerSupabase();
   const cookieStore = await cookies();
   const profileCookieStr = cookieStore.get("pm_profile")?.value;
-  const profile = profileCookieStr ? await decryptProfileToken(profileCookieStr) : null;
+  let profile = null;
+  if (profileCookieStr) {
+    try {
+      profile = await decryptProfileToken(profileCookieStr);
+    } catch {
+      profile = null;
+    }
+  }
   const effectiveZip = normalizeZip(resolvedSearchParams.zip) ?? normalizeZip(profile?.zip) ?? null;
 
   let trialRes = await supabase
@@ -219,7 +224,7 @@ export default async function TrialDetailPage({ params, searchParams }: PageProp
   const insightsRes = await supabase
     .from("trial_insights_latest")
     .select(
-      "plain_summary_json, patient_insights_json, top_disqualifiers_json, burden_score, logistics_score, condition_body_systems_json, drug_classes_json, drug_routes_json, endpoint_categories_json, procedure_categories_json, device_categories_json",
+      "plain_summary_json, patient_insights_json, top_disqualifiers_json, burden_score, logistics_score, strictness_score, condition_body_systems_json, drug_classes_json, drug_routes_json, endpoint_categories_json, procedure_categories_json, device_categories_json",
     )
     .eq("nct_id", trial.nct_id)
     .maybeSingle();
@@ -264,6 +269,9 @@ export default async function TrialDetailPage({ params, searchParams }: PageProp
   const detailScreenerHref = buildHrefWithZip(`/trial/${trial.nct_id}/screen`, effectiveZip);
   const isScreenable = isScreenableStatus(trial.status_bucket);
 
+  const plainSummaryObj = typeof insights?.plain_summary_json === "object" ? insights.plain_summary_json as Record<string, any> : null;
+  const designObj = plainSummaryObj?.structured?.design as Record<string, any> | undefined;
+
   return (
     <main className="relative min-h-screen pb-16 pt-12" data-route="trial-detail">
       <AuroraBG className="fixed inset-0 z-0 opacity-70" intensity="calm" />
@@ -287,25 +295,18 @@ export default async function TrialDetailPage({ params, searchParams }: PageProp
             fallbackSummary={buildFallbackSummary(trial, insights)}
           />
 
-          <TreatmentSnapshot insights={insights} phase={trial.phase} />
-
           <ParticipationEffort
-            burdenScore={insights?.burden_score}
-            logisticsScore={insights?.logistics_score}
+            isRemote={insights?.logistics_score === 100}
+            interventionModes={insights?.patient_insights_json?.intervention_modes}
+            drugRoutes={insights?.drug_routes_json?.map((dr) => dr.route).filter(Boolean) as string[]}
+            masking={designObj?.masking}
+            allocation={designObj?.allocation}
+            interventionModel={designObj?.intervention_model}
           />
 
           <ExclusionCallout raw={insights?.top_disqualifiers_json} />
 
-          <Accordion type="single" collapsible defaultValue="treatment-details" className="w-full">
-            <AccordionItem value="treatment-details" className="border rounded-xl px-4 bg-white/60 backdrop-blur-sm">
-              <AccordionTrigger className="text-sm font-semibold text-foreground hover:no-underline py-3">
-                Treatment &amp; endpoints
-              </AccordionTrigger>
-              <AccordionContent className="pb-4">
-                <TrialEnrichments insights={insights} />
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+          <TrialEnrichments insights={insights} />
 
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 pt-2">
@@ -314,7 +315,7 @@ export default async function TrialDetailPage({ params, searchParams }: PageProp
                 href={detailScreenerHref}
                 className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
               >
-                Check if I qualify
+                Screen for this study
               </Link>
             )}
             <a

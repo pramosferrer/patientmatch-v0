@@ -1,0 +1,4 @@
+2025-10-10 – Rebuilt landing page: new hero, trust bar, 3-step timeline, checklist, CTA band. Enforced minimal shapes, gentle motion, reduced-motion support. Removed chip-heavy components and duplicate claims.
+2025-10-10 – /trials redesign: sidebar + single-column match view, simplified layout with toggle, WCAG-AA CTA contrast, filters placeholder, copy aligned to landing.
+2025-10-10 – /trials polish: introduced TrialRowAdapter (presentation-only), restored condition label, capped bullets to 2 (study-at-a-glance vs why-it-fits), aligned right-column actions, flattened sidebar styling, and fixed CTA contrast.
+2025-10-10 — Established PatientMatch design tokens (type, color, buttons, tags, dividers); hoisted Aurora to page root with hero fade; standardized section separators (Soft Gradient Band); rebuilt Trust Bar grid; applied tokens to home, /trials, and details/screener shells; unified motion with reduced-motion support.

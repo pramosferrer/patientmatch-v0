@@ -37,9 +37,6 @@ function getFriendlyTitle(title: string): string {
 
 export default async function TrialScreenPage({ params, searchParams }: PageProps) {
   const { nct_id } = await params;
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[trial:params]", { nct_id });
-  }
   const resolvedSearchParams = (await searchParams) ?? {};
   const debug = process.env.NODE_ENV === "production" ? undefined : resolvedSearchParams.debug;
   const { mode: rawMode } = resolvedSearchParams;
@@ -67,35 +64,6 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
 
   const supabase = getServerSupabase();
 
-  if (process.env.NODE_ENV !== "production") {
-    const rawRes = await supabase
-      .from("trials_serving_latest")
-      .select(
-        "nct_id, title, display_title, sponsor, phase, status, status_bucket, conditions, states_list, questionnaire_json, quality_score, minimum_age, maximum_age, min_age_years, max_age_years, gender, site_count_us",
-      )
-      .eq("nct_id", nct_id)
-      .single();
-    console.log("[trial:raw fetch]", {
-      error: rawRes.error,
-      hasData: Boolean(rawRes.data),
-      dataKeys: rawRes.data ? Object.keys(rawRes.data) : [],
-      fetchedNct: rawRes.data?.nct_id ?? null,
-    });
-    if (rawRes.error) {
-      const minimalRes = await supabase
-        .from("trials_serving_latest")
-        .select("nct_id, title, display_title, questionnaire_json, minimum_age, maximum_age, min_age_years, max_age_years, gender, site_count_us, states_list")
-        .eq("nct_id", nct_id)
-        .single();
-      console.log("[trial:minimal fetch]", {
-        error: minimalRes.error,
-        hasData: Boolean(minimalRes.data),
-        dataKeys: minimalRes.data ? Object.keys(minimalRes.data) : [],
-        fetchedNct: minimalRes.data?.nct_id ?? null,
-      });
-    }
-  }
-
   // Explicit column selection aligned to current trials schema
   let trialRes = await supabase
     .from("trials_serving_latest")
@@ -104,16 +72,10 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
     )
     .eq("nct_id", normalizedNct)
     .single();
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[trial:filtered fetch]", { data: trialRes.data, error: trialRes.error });
-  }
 
   let trial = trialRes.data as any;
 
   if (trialRes.error || !trial) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.info('screener load', { paramNct: nct_id, fetchedNct: null, source: 'nct_id miss' });
-    }
     // Try by internal numeric/string id with explicit columns
     const byId = await supabase
       .from("trials_serving_latest")
@@ -124,9 +86,6 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
       .single();
     trial = byId.data as any;
     if (trial) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.info('screener load', { paramNct: nct_id, fetchedNct: trial.nct_id, source: 'id' });
-      }
       // Redirect to canonical NCT path if we matched by internal id
       const canonicalParams = new URLSearchParams();
       canonicalParams.set("mode", mode);
@@ -140,9 +99,6 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
   }
 
   if (!trial) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.info('screener load', { paramNct: nct_id, fetchedNct: null, source: 'not found' });
-    }
     return (
       <main className="pb-16 pt-12" data-route="screener">
         <div className="pm-container">
@@ -163,16 +119,6 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
         </div>
       </main>
     );
-  }
-
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[screener:profile seed]", {
-      profileAge: profileCookie?.age ?? null,
-      profileSex: profileCookie?.sex ?? null,
-      trialMinAge: null,
-      trialMaxAge: null,
-      trialGender: null,
-    });
   }
 
   const initialProfile = profileCookie ?? null;

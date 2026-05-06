@@ -9,10 +9,15 @@ import {
 
 export type TrialInsights = {
   plain_summary_json?: unknown | null;
-  patient_insights_json?: unknown | null;
+  patient_insights_json?: {
+    intervention_modes?: string[];
+    participant_actions?: Array<{ text?: string; confidence?: string; source?: string }>;
+    [key: string]: unknown;
+  } | null;
   top_disqualifiers_json?: unknown | null;
   burden_score?: number | null;
   logistics_score?: number | null;
+  strictness_score?: number | null;
   condition_body_systems_json?: Record<string, string[]> | null;
   drug_classes_json?: Array<{
     drug_name?: string;
@@ -216,15 +221,17 @@ export default function TrialEnrichments({
   if (sections.length === 0) return null;
 
   return (
-    <section className="rounded-2xl border border-border/60 bg-white/90 p-6 shadow-[0_24px_48px_rgba(15,23,42,0.08)]">
-      <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
-          Trial highlights
-        </p>
-        <h2 className="text-xl font-semibold text-foreground">Treatment details</h2>
-        <p className="text-sm text-muted-foreground">
-          Auto-extracted from trial records to preview treatments and outcomes.
-        </p>
+    <section className="rounded-2xl border border-border/60 bg-white/90 p-6 shadow-[0_2px_4px_rgba(45,80,60,0.05),_0_16px_48px_-12px_rgba(45,80,60,0.12)]">
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Cpu className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-display font-normal text-foreground">Extracted study details</h2>
+          </div>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Pulled from the trial record to show what is being tested and what the study is measuring.
+          </p>
+        </div>
       </div>
       <div className="mt-5 space-y-4">
         {sections.map((section) => {

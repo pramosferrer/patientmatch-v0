@@ -5,7 +5,8 @@ test.describe("Trials guided filtering", () => {
     test.skip(browserName !== "chromium", "Temporary Chromium-only E2E coverage.");
     await page.goto("/trials?intake=1");
 
-    await expect(page.getByRole("heading", { name: /find your best-fit trials/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /narrow this list before you open individual studies/i })).toBeVisible();
+    await expect(page.getByTestId("trials-intake-stepper")).toHaveAttribute("data-hydrated", "true");
 
     const conditionInput = page.getByLabel("Condition");
     await conditionInput.fill("migraine");
@@ -23,13 +24,14 @@ test.describe("Trials guided filtering", () => {
     await page.getByLabel("Female").click();
     await nextButton.click();
 
-    await page.getByRole("button", { name: "See My Matches" }).click();
+    await page.getByRole("button", { name: "Apply filters" }).click();
 
     await expect(page).toHaveURL(/\/trials\?/);
-    await expect(page).toHaveURL(/condition=migraine/);
-    await expect(page).toHaveURL(/zip=02115/);
-    await expect(page).toHaveURL(/age=42/);
-    await expect(page).toHaveURL(/sex=female/);
+    await expect(page).toHaveURL(/condition=migraine/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/zip=02115/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/age=42/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/sex=female/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/radius=50/, { timeout: 15_000 });
     await expect(page).not.toHaveURL(/intake=1/);
   });
 });

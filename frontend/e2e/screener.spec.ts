@@ -16,7 +16,7 @@ async function getTrialIds(request: APIRequestContext, baseURL: string): Promise
   expect(response.ok()).toBeTruthy();
 
   const payload = await response.json();
-  const ids = Array.isArray(payload?.trials)
+  const ids: string[] = Array.isArray(payload?.trials)
     ? payload.trials
         .map((trial: { nct_id?: string }) => trial?.nct_id)
         .filter((value: unknown): value is string => typeof value === "string" && value.length > 0)
@@ -27,9 +27,11 @@ async function getTrialIds(request: APIRequestContext, baseURL: string): Promise
     return [];
   }
   if (unique.length === 1) {
-    return [unique[0], unique[0]];
+    const first = unique[0];
+    if (!first) return [];
+    return [first, first];
   }
-  return unique.slice(0, 2);
+  return unique.slice(0, 2).filter((value): value is string => typeof value === "string");
 }
 
 async function ensureVisibleContrast(page: Page, nctId: string, baseURL: string) {

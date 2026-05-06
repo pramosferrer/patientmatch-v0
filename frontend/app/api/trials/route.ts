@@ -71,7 +71,14 @@ export async function GET(request: NextRequest) {
   // Cookie & Profile Logic
   const cookieStore = await cookies();
   const profileCookieStr = cookieStore.get("pm_profile")?.value;
-  const profile = profileCookieStr ? await import("@/shared/profileCookie").then(m => m.decryptProfileToken(profileCookieStr)) : null;
+  let profile = null;
+  if (profileCookieStr) {
+    try {
+      profile = await import("@/shared/profileCookie").then(m => m.decryptProfileToken(profileCookieStr));
+    } catch {
+      profile = null;
+    }
+  }
 
   if (!hasDiscoveryInput(parsed.data)) {
     return NextResponse.json({

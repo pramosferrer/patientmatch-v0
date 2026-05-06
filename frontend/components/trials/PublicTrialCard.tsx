@@ -18,6 +18,7 @@ export type PublicTrial = {
   status_bucket?: string | null;
   conditions?: string[] | string | null;
   quality_score?: number | null;
+  patient_readiness_score?: number | null;
   distance_miles?: number | null;
   sponsor?: string | null;
   phase?: string | null;

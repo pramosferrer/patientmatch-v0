@@ -1,0 +1,58 @@
+'use client'
+
+import LinkWithAnalytics from './LinkWithAnalytics'
+import { Button } from '@/components/ui/button'
+import NetworkBG from '@/components/bg/NetworkBG'
+import { ShieldCheck, FileSearch, Languages } from 'lucide-react'
+
+export default function HeroDark() {
+  return (
+    <section className="relative isolate overflow-hidden bg-[#0B1220]">
+      {/* Calm background + subtle color glows */}
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(900px_700px_at_86%_20%,rgba(37,99,235,0.12),transparent_55%),radial-gradient(700px_600px_at_18%_35%,rgba(20,184,166,0.12),transparent_60%)]" />
+      <NetworkBG className="opacity-15" />
+
+      {/* SCRIM: ensures the text is always legible */}
+      <div className="absolute inset-y-0 left-0 right-0 -z-10 bg-gradient-to-r from-[#0B1220] via-[#0B1220]/90 to-transparent" />
+
+      <div className="mx-auto max-w-7xl px-4 py-16 md:py-24">
+        <div className="max-w-3xl">
+          <h1 className="text-white font-extrabold leading-tight text-4xl md:text-5xl tracking-tightish max-w-[16ch]">
+            Find the right clinical trial — fast, free, and confidential.
+          </h1>
+
+          <p className="mt-5 text-white/85 text-lg md:text-xl max-w-[58ch]">
+            We translate complex eligibility into plain English and guide you step-by-step — no PII required to start.
+          </p>
+
+          <div className="mt-7 flex flex-wrap items-center gap-3">
+            <LinkWithAnalytics href="/match" event="click_find_my_match">
+              <Button size="lg" variant="brand">Start Matching</Button>
+            </LinkWithAnalytics>
+            <LinkWithAnalytics href="/trials" event="click_browse_all_trials">
+              <Button size="lg" variant="inverted">Browse Trials</Button>
+            </LinkWithAnalytics>
+            <span className="text-sm text-white/70 pl-1">Takes about 2–3 minutes</span>
+          </div>
+
+          {/* Single line of trust bullets (kept compact) */}
+          <ul className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+            {[
+              { Icon: FileSearch, label: 'Data curated from ClinicalTrials.gov' },
+              { Icon: ShieldCheck, label: 'HIPAA-aligned design' },
+              { Icon: Languages,  label: 'Human-friendly screening' },
+            ].map(({ Icon, label }) => (
+              <li key={label} className="flex items-center gap-2 text-white/80">
+                <Icon className="h-5 w-5 text-white/90" />
+                <span>{label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {/* Divider to transition to light body */}
+      <div className="h-px w-full bg-white/10" />
+    </section>
+  )
+}

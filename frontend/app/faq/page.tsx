@@ -48,10 +48,10 @@ export default function FAQPage() {
                 <summary className="flex items-center justify-between p-6 cursor-pointer hover:bg-pm-bg/30 transition-colors rounded-t-2xl">
                   <h3 className="text-lg font-semibold text-pm-ink pr-4">{faq.question}</h3>
                   <div className="flex-shrink-0">
-                    <svg 
-                      className="w-5 h-5 text-pm-muted transition-transform group-open:rotate-180" 
-                      fill="none" 
-                      stroke="currentColor" 
+                    <svg
+                      className="w-5 h-5 text-pm-muted transition-transform group-open:rotate-180"
+                      fill="none"
+                      stroke="currentColor"
                       viewBox="0 0 24 24"
                     >
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -71,8 +71,8 @@ export default function FAQPage() {
           <div className="bg-pm-bg/50 border border-pm-border/60 rounded-2xl p-8">
             <h2 className="font-heading text-2xl font-semibold text-pm-ink mb-4">Ready to find your match?</h2>
             <p className="text-pm-body mb-6">Start your journey to finding relevant clinical trials in just a few minutes.</p>
-            <a 
-              href="/trials" 
+            <a
+              href="/trials"
               className="inline-flex items-center rounded-xl bg-pm-primary text-white px-8 py-3 text-lg font-medium hover:bg-pm-primaryHover transition-colors shadow-soft hover:shadow-lg"
             >
               Find My Match

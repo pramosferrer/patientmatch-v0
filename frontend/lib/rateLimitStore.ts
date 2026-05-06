@@ -113,8 +113,9 @@ function createRateLimiter(): RateLimiter {
   const redisDisabled = process.env.UPSTASH_REDIS_DISABLED === '1';
   const env = process.env.NODE_ENV;
   const isDevLike = env === 'development' || env === 'test';
+  const hasPlaceholderRedis = typeof url === 'string' && url.includes('example.upstash.io');
 
-  if (url && token) {
+  if (url && token && !(isDevLike && hasPlaceholderRedis)) {
     return new UpstashRateLimiter(url, token);
   }
 

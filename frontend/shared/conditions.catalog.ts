@@ -180,6 +180,22 @@ function slugToTitleCase(slug: string): string {
     .join(' ');
 }
 
+// Build the overlaps filter values for a seed condition (slug + label + synonym slugs + synonym labels)
+function seedFilterValues(seed: Omit<ConditionItem, 'count' | 'source'>): string[] {
+  const values = new Set<string>();
+  values.add(seed.slug);
+  values.add(toConditionLabel(seed.slug));
+  for (const syn of seed.synonyms ?? []) {
+    const t = syn.trim();
+    if (t) {
+      values.add(t);
+      const s = toConditionSlug(t);
+      if (s && s !== 'other') values.add(s);
+    }
+  }
+  return Array.from(values).filter(Boolean);
+}
+
 // Core function to build catalog (cached)
 async function buildConditionCatalog(options: CatalogOptions = {}): Promise<ConditionCatalog> {
   const { includeEmpty = true, minCount = 0 } = options;
@@ -188,42 +204,59 @@ async function buildConditionCatalog(options: CatalogOptions = {}): Promise<Cond
   try {
     const supabase = getServerSupabase();
 
-    // Query Supabase for distinct slugs and counts
-    const { data, error } = await supabase
-      .from('trials_serving_latest')
-      .select('conditions, status_bucket')
-      .limit(50000); // Get more data for accurate counts
+    // --- Accurate counts for seed conditions ---
+    // Use parallel count-only queries (head:true) with the same overlaps filter as the
+    // condition slug page. This bypasses the 1000-row PostgREST cap entirely.
+    const seedCountResults = await Promise.all(
+      SEED_CONDITIONS.map(async (seed) => {
+        const filterValues = seedFilterValues(seed);
+        const [{ count: total }, { count: recruiting }] = await Promise.all([
+          supabase
+            .from('trials_serving_latest')
+            .select('nct_id', { count: 'exact', head: true })
+            .overlaps('conditions', filterValues),
+          supabase
+            .from('trials_serving_latest')
+            .select('nct_id', { count: 'exact', head: true })
+            .overlaps('conditions', filterValues)
+            .eq('status_bucket', 'Recruiting'),
+        ]);
+        return { slug: seed.slug, total: total ?? 0, recruiting: recruiting ?? 0 };
+      })
+    );
 
-    if (error) {
-      console.error('❌ Supabase query error:', error);
-      throw error;
-    }
-
-    // Count occurrences of each slug
     const slugCounts = new Map<string, number>();
     const recruitingCounts = new Map<string, number>();
+    for (const { slug, total, recruiting } of seedCountResults) {
+      slugCounts.set(slug, total);
+      recruitingCounts.set(slug, recruiting);
+    }
+
+    // --- Approximate counts for non-seed DB conditions ---
+    // Sample up to 1000 rows (PostgREST default cap) for ranking purposes only.
+    const { data: sampleData } = await supabase
+      .from('trials_serving_latest')
+      .select('conditions, status_bucket');
+
+    const seedSlugSet = new Set(SEED_CONDITIONS.map(s => s.slug));
     let totalTrials = 0;
     let recruitingTrials = 0;
 
-    for (const row of data || []) {
+    for (const row of sampleData || []) {
       totalTrials++;
       const isRecruiting = row.status_bucket?.toLowerCase() === 'recruiting';
       if (isRecruiting) recruitingTrials++;
 
-      if (Array.isArray(row.conditions)) {
-        for (const rawSlug of row.conditions) {
-          const slug = toConditionSlug(String(rawSlug));
-          if (slug && slug !== 'other') {
-            slugCounts.set(slug, (slugCounts.get(slug) || 0) + 1);
-            if (isRecruiting) {
-              recruitingCounts.set(slug, (recruitingCounts.get(slug) || 0) + 1);
-            }
-          }
-        }
+      if (!Array.isArray(row.conditions)) continue;
+      for (const rawSlug of row.conditions) {
+        const slug = toConditionSlug(String(rawSlug));
+        if (!slug || slug === 'other' || seedSlugSet.has(slug)) continue;
+        slugCounts.set(slug, (slugCounts.get(slug) || 0) + 1);
+        if (isRecruiting) recruitingCounts.set(slug, (recruitingCounts.get(slug) || 0) + 1);
       }
     }
 
-    devLog(`📊 Found ${slugCounts.size} distinct condition slugs across ${totalTrials} trials (${recruitingTrials} recruiting)`);
+    devLog(`📊 Seed conditions counted via exact queries; ${totalTrials} sampled for non-seed ranking (${recruitingTrials} recruiting in sample)`);
 
     // Create seed lookup map
     const seedMap = new Map<string, Omit<ConditionItem, 'count' | 'source'>>();
@@ -336,10 +369,49 @@ async function buildConditionCatalog(options: CatalogOptions = {}): Promise<Cond
   }
 }
 
-// Cached version with 12h revalidation
-export const getConditionCatalog = unstable_cache(
+async function getActiveReleaseCatalogVersion(): Promise<string> {
+  try {
+    const supabase = getServerSupabase();
+    const { data, error } = await supabase
+      .from('pipeline_releases')
+      .select('build_tag, activated_at, updated_at')
+      .eq('status', 'active')
+      .order('activated_at', { ascending: false, nullsFirst: false })
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) return 'unknown';
+    return [
+      data?.build_tag,
+      data?.activated_at,
+      data?.updated_at,
+    ].filter(Boolean).join(':') || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+// Cached version with 12h revalidation. The active release version is an
+// argument so Vercel does not reuse a stale condition catalog after a release flip.
+const getConditionCatalogForRelease = unstable_cache(
+  async (_activeReleaseVersion: string) => buildConditionCatalog(),
+  ['condition-catalog-v5'],
+  {
+    tags: ['conditions'],
+    revalidate: 43200 // 12 hours
+  }
+);
+
+export async function getConditionCatalog(): Promise<ConditionCatalog> {
+  const activeReleaseVersion = await getActiveReleaseCatalogVersion();
+  return getConditionCatalogForRelease(activeReleaseVersion);
+}
+
+// Backward-compatible cached export name for code that imports it as a value.
+export const getConditionCatalogCached = unstable_cache(
   buildConditionCatalog,
-  ['condition-catalog-v4'],
+  ['condition-catalog-v5-legacy'],
   {
     tags: ['conditions'],
     revalidate: 43200 // 12 hours

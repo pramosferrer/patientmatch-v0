@@ -52,8 +52,8 @@ const RESULT_COPY: Record<
   }
 > = {
   likely: {
-    label: "You look like a strong fit",
-    summary: "Based on your answers, you appear to meet the main eligibility criteria for this study.",
+    label: "Strong pre-screen match",
+    summary: "Based on your answers, you match the patient-answerable checks we could screen here. The study team makes the final eligibility decision.",
     toneClass: "text-emerald-700",
     borderClass: "border-l-emerald-500",
     icon: CheckCircle,
@@ -80,9 +80,14 @@ function getConfidenceCopy(
 ): { label: string; summary: string } | null {
   if (result === "no") return null;
   switch (confidence) {
+    case "eligible_path":
+      return {
+        label: "What this means",
+        summary: "You have no obvious blockers from the questions answered here, so this study is reasonable to discuss with the site.",
+      };
     case "strong":
       return {
-        label: "Strong pre-screen",
+        label: "What this means",
         summary: "Your answers match the main patient-answerable checks we could screen here.",
       };
     case "site_confirmed":
@@ -117,6 +122,100 @@ function normalizeSex(value: unknown): "male" | "female" | null {
   const normalized = value.trim().toLowerCase();
   if (normalized === "male" || normalized === "m") return "male";
   if (normalized === "female" || normalized === "f") return "female";
+  return null;
+}
+
+type ProfileCategory = "age" | "sex" | "diagnosis" | "activity";
+
+function getProfileCategory(input: { id?: string; label?: string } | string): ProfileCategory | null {
+  const text =
+    typeof input === "string"
+      ? input.toLowerCase()
+      : `${input.id ?? ""} ${input.label ?? ""}`.toLowerCase();
+
+  if (/\bage\b|age_year|how old/.test(text)) return "age";
+  if (text.includes("sex_at_birth") || text.includes("assigned at birth") || /\bsex\b/.test(text) || text.includes("gender")) {
+    return "sex";
+  }
+  if (text.includes("diagnos") || text.includes("condition this study targets") || text.includes("do you have")) {
+    return "diagnosis";
+  }
+  if (
+    text.includes("ecog") ||
+    text.includes("performance_status") ||
+    text.includes("performance status") ||
+    text.includes("daily activity") ||
+    text.includes("activity level") ||
+    text.includes("best describes your daily")
+  ) {
+    return "activity";
+  }
+
+  return null;
+}
+
+function hasDetailForCategory(details: EvaluationDetail[], category: ProfileCategory): boolean {
+  return details.some((detail) => getProfileCategory(detail) === category);
+}
+
+function hasProvidedAnswer(value: unknown): boolean {
+  if (value === null || value === undefined || value === false) return false;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return (
+      normalized.length > 0 &&
+      normalized !== "false" &&
+      normalized !== "no" &&
+      normalized !== "none of the above" &&
+      normalized !== "not sure" &&
+      normalized !== "unsure"
+    );
+  }
+  if (Array.isArray(value)) {
+    return value.some((entry) => hasProvidedAnswer(entry));
+  }
+  return true;
+}
+
+function toNumericAnswer(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function firstStringAnswer(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (Array.isArray(value)) {
+    const first = value.find((entry) => typeof entry === "string" && hasProvidedAnswer(entry));
+    return typeof first === "string" ? first.trim() : null;
+  }
+  return null;
+}
+
+function findAnswerByCategory(
+  answers: Record<string, unknown>,
+  category: ProfileCategory,
+): { id: string; value: unknown } | null {
+  const preferredKeys: Record<ProfileCategory, string[]> = {
+    age: ["age_years", "age", "dem_age"],
+    sex: ["sex_at_birth", "sex", "gender", "dem_sex"],
+    diagnosis: ["diagnosis_confirmed", "diagnosis_list", "condition", "condition_name"],
+    activity: ["ecog_activity", "performance_status", "ecog", "activity_level", "daily_activity"],
+  };
+
+  for (const key of preferredKeys[category]) {
+    if (hasProvidedAnswer(answers[key])) return { id: key, value: answers[key] };
+  }
+
+  for (const [key, value] of Object.entries(answers)) {
+    if (getProfileCategory(key) === category && hasProvidedAnswer(value)) {
+      return { id: key, value };
+    }
+  }
+
   return null;
 }
 
@@ -187,26 +286,28 @@ function formatMetDetail(
 
   if (id.includes("age") || label.includes("how old") || label.includes("your age")) {
     const age = answers.age_years ?? answers.age ?? answers.dem_age ?? answers[detail.id];
-    if (typeof age === "number") {
+    const numericAge = toNumericAnswer(age);
+    if (numericAge !== null) {
       const min = trial?.min_age_years;
       const max = trial?.max_age_years;
-      if (min != null && max != null) return `Age ${age} — within this study's ${min}–${max} year range`;
-      if (min != null) return `Age ${age} — meets the minimum age of ${min}`;
-      if (max != null) return `Age ${age} — within the study's age limit of ${max}`;
-      return `Age ${age} — meets the study's age requirement`;
+      if (min != null && max != null) return `Age ${numericAge} — within this study's ${min}–${max} year range`;
+      if (min != null) return `Age ${numericAge} — meets the minimum age of ${min}`;
+      if (max != null) return `Age ${numericAge} — within the study's age limit of ${max}`;
+      return `Age ${numericAge} — meets the study's age requirement`;
     }
   }
 
   if (id.includes("sex") || id.includes("gender") || label.includes("assigned at birth") || label.includes("sex were you")) {
     const raw = answers.sex_at_birth ?? answers.sex ?? answers.dem_sex ?? answers[detail.id];
-    if (typeof raw === "string" && raw.trim()) {
-      const fmt = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+    const sex = firstStringAnswer(raw);
+    if (sex) {
+      const fmt = sex.charAt(0).toUpperCase() + sex.slice(1).toLowerCase();
       return `${fmt} — matches the study's focus`;
     }
   }
 
   if (id.includes("diagnos") || label.includes("diagnosed with") || label.includes("do you have")) {
-    const val = answers[detail.id] ?? answers.diagnosis_confirmed;
+    const val = answers[detail.id] ?? findAnswerByCategory(answers, "diagnosis")?.value;
     if (val === true) return "Diagnosis confirmed — matches this study's focus";
     if (Array.isArray(val) && val.length > 0) {
       const filtered = val.filter((v) => typeof v === "string" && !["none of the above", "not sure"].includes(v.toLowerCase()));
@@ -216,7 +317,7 @@ function formatMetDetail(
   }
 
   if (id.includes("ecog") || id.includes("activity") || label.includes("activity") || label.includes("daily")) {
-    const val = answers[detail.id];
+    const val = answers[detail.id] ?? findAnswerByCategory(answers, "activity")?.value;
     if (typeof val === "string" && val.trim()) {
       const short = val.length > 45 ? val.slice(0, 45) + "…" : val;
       return `Activity level (${short}) — meets the study's requirements`;
@@ -391,39 +492,68 @@ export default function ScreenResult({
   }
 
   const { result, score, met_details = [], unknown_details = [], unmet_details = [], reasons = [] } = evaluation;
-  const resultCopy = RESULT_COPY[result];
-  const ResultIcon = resultCopy.icon;
-  const confidenceCopy = getConfidenceCopy(screenerConfidence, result);
 
   const sexAnswer = answers.sex ?? answers.gender ?? answers.dem_sex ?? answers.sex_at_birth;
   const isMale = normalizeSex(sexAnswer) === "male";
-  const filteredUnknownDetails = isMale
+  const sexFilteredUnknownDetails = isMale
     ? unknown_details.filter((detail) => !isReproductiveCriterion(detail))
     : unknown_details;
 
   // Synthesize profile-based demographic matches that the evaluator never sees
   // (the adapter removes pre-filled questions from the question list before evaluation)
   const profileSynthesized: EvaluationDetail[] = [];
-  const ageVal = answers.age_years ?? answers.age;
-  if (typeof ageVal === "number" && !met_details.some((d) => d.id.toLowerCase().includes("age"))) {
-    profileSynthesized.push({ id: "age_years", label: "Your age", clauseType: "inclusion", status: "met" });
+  const profileUnmet: EvaluationDetail[] = [];
+  const ageAnswer = findAnswerByCategory(answers, "age");
+  const ageValue = toNumericAnswer(ageAnswer?.value);
+  if (ageValue !== null && !hasDetailForCategory(met_details, "age") && !hasDetailForCategory(unmet_details, "age")) {
+    const minAge = trial.min_age_years;
+    const maxAge = trial.max_age_years;
+    if ((minAge != null && ageValue < minAge) || (maxAge != null && ageValue > maxAge)) {
+      profileUnmet.push({ id: "age_years", label: "Your age", clauseType: "inclusion", status: "unmet" });
+    } else {
+      profileSynthesized.push({ id: "age_years", label: "Your age", clauseType: "inclusion", status: "met" });
+    }
   }
-  const sexVal = answers.sex_at_birth ?? answers.sex;
-  if (typeof sexVal === "string" && sexVal.trim() && !met_details.some((d) => d.id.toLowerCase().includes("sex") || d.id.toLowerCase().includes("gender"))) {
+  const sexAnswerForSynth = findAnswerByCategory(answers, "sex");
+  const sexVal = firstStringAnswer(sexAnswerForSynth?.value);
+  if (sexVal && !hasDetailForCategory(met_details, "sex") && !hasDetailForCategory(unmet_details, "sex")) {
     const trialGender = trial.gender?.toLowerCase() ?? "";
     const sexNorm = sexVal.toLowerCase();
     if (!trialGender || trialGender === "all" || trialGender === "any" || trialGender.includes(sexNorm) || trialGender === "unknown") {
       profileSynthesized.push({ id: "sex_at_birth", label: "Your sex", clauseType: "inclusion", status: "met" });
     }
   }
-  const diagVal = answers.diagnosis_confirmed;
-  if (diagVal === true && !met_details.some((d) => d.id.toLowerCase().includes("diagnos"))) {
-    profileSynthesized.push({ id: "diagnosis_confirmed", label: "Have you been diagnosed with the condition this study targets?", clauseType: "inclusion", status: "met" });
+  const diagnosisAnswer = findAnswerByCategory(answers, "diagnosis");
+  if (diagnosisAnswer && !hasDetailForCategory(met_details, "diagnosis") && !hasDetailForCategory(unmet_details, "diagnosis")) {
+    profileSynthesized.push({ id: diagnosisAnswer.id, label: "Have you been diagnosed with the condition this study targets?", clauseType: "inclusion", status: "met" });
+  }
+  const activityAnswer = findAnswerByCategory(answers, "activity");
+  if (activityAnswer && !hasDetailForCategory(met_details, "activity") && !hasDetailForCategory(unmet_details, "activity")) {
+    profileSynthesized.push({ id: activityAnswer.id, label: "Which best describes your daily activity?", clauseType: "inclusion", status: "met" });
   }
 
+  const resolvedProfileCategories = new Set<ProfileCategory>();
+  for (const detail of [...profileSynthesized, ...met_details]) {
+    const category = getProfileCategory(detail);
+    if (category) resolvedProfileCategories.add(category);
+  }
+  const filteredUnknownDetails = sexFilteredUnknownDetails.filter((detail) => {
+    const category = getProfileCategory(detail);
+    return !category || !resolvedProfileCategories.has(category);
+  });
   const highlightedMet = [...profileSynthesized, ...met_details]; // show all — patients deserve to see everything they passed
+  const displayUnmetDetails = [...profileUnmet, ...unmet_details];
   const highlightedUnknown = filteredUnknownDetails.slice(0, 6);
-  const highlightedUnmet = unmet_details.slice(0, 6);
+  const highlightedUnmet = displayUnmetDetails.slice(0, 6);
+  const displayResult: ResultKey =
+    result !== "no" && displayUnmetDetails.length === 0 && filteredUnknownDetails.length === 0 && highlightedMet.length > 0
+      ? "likely"
+      : result;
+  const confidenceForDisplay =
+    displayResult === "likely" && result !== "likely" ? "eligible_path" : screenerConfidence;
+  const resultCopy = RESULT_COPY[displayResult];
+  const ResultIcon = resultCopy.icon;
+  const confidenceCopy = getConfidenceCopy(confidenceForDisplay, displayResult);
 
 
   const handleExportPDF = () => {
@@ -438,8 +568,8 @@ export default function ScreenResult({
     const unknownLines = filteredUnknownDetails.length > 0
       ? `Things that need confirmation:\n${filteredUnknownDetails.slice(0, 6).map((d) => `  • ${d.label}`).join("\n")}\n\n`
       : "";
-    const unmetLines = unmet_details.length > 0
-      ? `Possible concerns:\n${unmet_details.slice(0, 6).map((d) => `  • ${d.label}`).join("\n")}\n\n`
+    const unmetLines = displayUnmetDetails.length > 0
+      ? `Possible concerns:\n${displayUnmetDetails.slice(0, 6).map((d) => `  • ${d.label}`).join("\n")}\n\n`
       : "";
     const body = encodeURIComponent(
       `Hi,\n\nI completed an eligibility screening for a clinical trial and wanted to share the results with you.\n\n` +
@@ -477,7 +607,7 @@ export default function ScreenResult({
           context: {
             met_count: met_details.length,
             unknown_count: filteredUnknownDetails.length,
-            unmet_count: unmet_details.length,
+            unmet_count: displayUnmetDetails.length,
           },
         }),
       });
@@ -532,7 +662,7 @@ export default function ScreenResult({
               {result !== "no" && (
                 <p className="flex items-start gap-1.5 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                   <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary/70" aria-hidden="true" />
-                  These results are suggestions based on public trial data and your answers. The study team makes the final eligibility decision.
+                  This is a pre-screen based on public trial data and your answers, not an enrollment decision. The study team confirms final eligibility using records, labs, imaging, and site review.
                 </p>
               )}
             </header>
@@ -561,10 +691,10 @@ export default function ScreenResult({
                 />
               )}
 
-              {unmet_details.length > 0 && (
+              {displayUnmetDetails.length > 0 && (
                 <SectionList
                   title="Criteria you may not meet"
-                  count={unmet_details.length}
+                  count={displayUnmetDetails.length}
                   icon={XCircle}
                   toneClass="text-slate-600"
                   items={highlightedUnmet}
@@ -688,7 +818,7 @@ export default function ScreenResult({
               )}
             </div>
 
-            {result === "no" && (
+            {displayResult === "no" && (
               <div className="space-y-3">
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                   <h4 className="text-sm font-medium text-blue-900 mb-1">Other studies may still fit</h4>

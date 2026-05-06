@@ -116,6 +116,7 @@ export default function TrialsFilterBar({
   const [zipError,       setZipError]       = useState<string | null>(null);
   const [searchInput,    setSearchInput]    = useState(q);
   const debouncedSearch = useDebounce(searchInput, DEBOUNCE_MS);
+  const debouncedConditionQuery = useDebounce(conditionQuery, 180);
 
   // Sync local state when URL changes (e.g. back/forward navigation)
   useEffect(() => { setLocalZip(zip); }, [zip]);
@@ -132,13 +133,22 @@ export default function TrialsFilterBar({
     navigate({ q: trimmed || null, page: null });
   }, [debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch condition suggestions once on mount
+  // Fetch condition suggestions as the user types. The old behavior fetched only
+  // the default top conditions, then filtered that stale subset client-side.
   useEffect(() => {
-    fetch('/api/conditions/suggestions?query=')
+    const controller = new AbortController();
+    fetch(`/api/conditions/suggestions?query=${encodeURIComponent(debouncedConditionQuery)}`, {
+      signal: controller.signal,
+    })
       .then((r) => r.json())
-      .then((data) => setAllConditions(data))
-      .catch(() => {});
-  }, []);
+      .then((data) => {
+        if (Array.isArray(data)) setAllConditions(data);
+      })
+      .catch((error) => {
+        if (error?.name !== 'AbortError') setAllConditions([]);
+      });
+    return () => controller.abort();
+  }, [debouncedConditionQuery]);
 
   // ── Navigation helper ───────────────────────────────────────────────────────
   const navigate = useCallback(
@@ -270,9 +280,7 @@ export default function TrialsFilterBar({
   const locationLabel  = isNationwide ? 'Nationwide' : `${radius} mi · ${zip}`;
   const moreCount = [...phases, ...statusBuckets, ...(age ? ['age'] : []), ...(sex ? ['sex'] : [])].length;
 
-  const filteredConditions = conditionQuery
-    ? allConditions.filter((c) => c.label.toLowerCase().includes(conditionQuery.toLowerCase()))
-    : allConditions;
+  const filteredConditions = allConditions;
 
   // ── Pill button base class ──────────────────────────────────────────────────
   const pill = (active?: boolean) =>

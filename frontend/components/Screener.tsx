@@ -479,7 +479,13 @@ function EnhancedLabel({ question }: { question: UiQuestion }) {
 }
 
 function getWhyContent(question: UiQuestion): string {
-  return question.helperText ?? "";
+  const raw = question as Record<string, unknown>;
+  const rationale =
+    raw.whyWeAsk ??
+    raw.why_we_ask ??
+    raw.rationale ??
+    raw.explanation;
+  return typeof rationale === "string" ? rationale : "";
 }
 
 function pickAffirmation(status: CompletionStatus) {
@@ -1569,7 +1575,7 @@ export default function Screener({
 
       setRecentNote({
         affirmation: pickAffirmation(status),
-        why: getWhyContent(question),
+        why: "",
         reassurance: getReassurance(question, status),
       });
       setFlowState("acknowledging");
@@ -1790,15 +1796,6 @@ export default function Screener({
             unknown_count: evaluation.unknown_details?.length ?? 0,
             ...(isCompact ? { ui: "compact" as const } : {}),
           });
-          if (debugMode) {
-            console.log("[screener:completion]", {
-              patientQuestions: criteria.length,
-              clinicQuestions: clinicQuestions.length,
-              met: evaluation.met_details?.length ?? 0,
-              unmet: evaluation.unmet_details?.length ?? 0,
-              unknown: evaluation.unknown_details?.length ?? 0,
-            });
-          }
         } catch {
           /* ignore analytics failures */
         }
@@ -1813,13 +1810,11 @@ export default function Screener({
     answers,
     completion,
     criteria,
-    debugMode,
     isCompact,
     isEvaluating,
     onCompleted,
     questionnaire,
     trial,
-    clinicQuestions,
   ]);
 
   // Trigger evaluation when flowState is set to 'evaluating' (from handleSave on last question)
@@ -2865,9 +2860,6 @@ export default function Screener({
                           {...motionVariants}
                         >
                           <p className="font-medium text-foreground">{recentNote.affirmation}</p>
-                          {recentNote.why && (
-                            <p className="text-muted-foreground">Why this helps: {recentNote.why}</p>
-                          )}
                           <p className="text-xs text-muted-foreground/80">{recentNote.reassurance}</p>
                           <div className="flex flex-wrap items-center gap-2 pt-2">
                             <Button variant="ghost" size="sm" onClick={handleEdit}>

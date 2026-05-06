@@ -16,7 +16,7 @@ export async function getTrialCounts() {
       .from('trials_serving_latest')
       .select('nct_id', { count: 'exact', head: true })
       .overlaps('conditions', [label])
-      .eq('status_bucket', 'recruiting');
+      .eq('status_bucket', 'Recruiting');
 
     if (!error && count !== null) counts[slug] = count;
   }

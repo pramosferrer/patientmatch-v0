@@ -5,8 +5,9 @@ test.describe("Privacy and consent flows", () => {
     await page.goto("/privacy");
 
     await expect(page.getByRole("heading", { name: "Privacy Policy" })).toBeVisible();
-    await expect(page.getByText("HIPAA Compliant")).toBeVisible();
-    await expect(page.getByRole("link", { name: "privacy@patientmatch.com" })).toBeVisible();
+    await expect(page.getByText("Anonymous Screening")).toBeVisible();
+    await expect(page.getByText("Local-First Profile")).toBeVisible();
+    await expect(page.getByText(/We do not collect or send patient leads to trial sites/i)).toBeVisible();
   });
 
   test("lead capture endpoint is not publicly available", async ({ request }) => {

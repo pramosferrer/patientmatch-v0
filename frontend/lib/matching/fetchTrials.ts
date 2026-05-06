@@ -1,5 +1,11 @@
 import { getServerSupabase } from "@/lib/supabaseServer";
-import { fetchNearestSitesMeta, applyNearestMetaToTrials } from "@/lib/trials/nearestSites";
+import { getServiceClient } from "@/lib/supabaseAdmin";
+import {
+  fetchNearestSitesMeta,
+  fetchNearestTrialsPage,
+  fetchNearestTrialsPageByBoundingBox,
+  applyNearestMetaToTrials,
+} from "@/lib/trials/nearestSites";
 import { resolveZipToLatLon } from "@/shared/geo";
 import { calculateMatchConfidence } from "@/lib/matching/matchConfidence";
 import { applyTrialsSort, buildConditionFilterData, parseStatusBuckets } from "@/lib/matching/trialList";
@@ -7,7 +13,8 @@ import type { PublicTrial } from "@/components/trials/PublicTrialCard";
 
 const PAGE_SIZE = 24;
 const DEFAULT_RADIUS = 50;
-const TRIALS_PUBLIC_SELECT = "nct_id, title, display_title, status_bucket, conditions, quality_score, sponsor, minimum_age, maximum_age, min_age_years, max_age_years, gender, questionnaire_json, phase, site_count_us, states_list, intervention_mode_primary, study_duration_days";
+const TRIALS_PUBLIC_SELECT = "nct_id, title, display_title, status_bucket, conditions, quality_score, patient_readiness_score, sponsor, minimum_age, maximum_age, min_age_years, max_age_years, gender, phase, site_count_us, states_list, intervention_mode_primary, study_duration_days";
+const TRIALS_BASE_BROWSE_SELECT = "nct_id, title, display_title, status_bucket, conditions, quality_score, sponsor, minimum_age, maximum_age, min_age_years, max_age_years, gender, phase, site_count_us, states_list";
 
 // Map UI phase values ('1','2','3','4') to DB ilike patterns
 export function buildPhaseOrFilter(phases: string[]): string {
@@ -49,10 +56,120 @@ function parseRadius(value: unknown): number {
   return DEFAULT_RADIUS;
 }
 
+async function fetchActiveReleaseTag(supabase: ReturnType<typeof getServerSupabase>): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("pipeline_releases")
+    .select("build_tag")
+    .eq("status", "active")
+    .order("activated_at", { ascending: false, nullsFirst: false })
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return null;
+  return typeof data?.build_tag === "string" ? data.build_tag : null;
+}
+
+function applyStatusFilter<Query extends {
+  eq: (column: string, value: unknown) => Query;
+  in: (column: string, values: unknown[]) => Query;
+}>(
+  query: Query,
+  statusBucketRaw: string,
+  defaultRecruitingApplied: boolean,
+): Query {
+  if (defaultRecruitingApplied) {
+    return query.eq("status_bucket", "Recruiting");
+  }
+
+  const statusBuckets = parseStatusBuckets(statusBucketRaw);
+  if (statusBuckets.length === 1) {
+    return query.eq("status_bucket", toDbStatusBucket(statusBuckets[0]));
+  }
+  if (statusBuckets.length > 1) {
+    return query.in("status_bucket", statusBuckets.map(toDbStatusBucket));
+  }
+  return query;
+}
+
+function applyEligibilityFilters<Query extends {
+  in: (column: string, values: unknown[]) => Query;
+  or: (filters: string) => Query;
+}>(
+  query: Query,
+  effectiveAge: unknown,
+  effectiveSex: unknown,
+  phases: string[],
+): Query {
+  if (typeof effectiveAge === "number" && Number.isFinite(effectiveAge)) {
+    const age = Math.max(0, Math.round(effectiveAge));
+    query = query.or(
+      [
+        `and(min_age_years.is.null,max_age_years.is.null)`,
+        `and(min_age_years.is.null,max_age_years.gte.${age})`,
+        `and(min_age_years.lte.${age},max_age_years.is.null)`,
+        `and(min_age_years.lte.${age},max_age_years.gte.${age})`,
+      ].join(","),
+    );
+  }
+
+  const sexFilter = normalizeSexFilter(effectiveSex);
+  if (sexFilter === "male") {
+    query = query.in("gender", ["MALE", "male", "ALL", "all", "BOTH", "both", "ANY", "any"]);
+  } else if (sexFilter === "female") {
+    query = query.in("gender", ["FEMALE", "female", "ALL", "all", "BOTH", "both", "ANY", "any"]);
+  }
+
+  if (phases.length > 0) {
+    query = query.or(buildPhaseOrFilter(phases));
+  }
+
+  return query;
+}
+
 type FetchTrialsOptions = {
   searchParams: Record<string, string | string[] | undefined>;
   profile: any;
 };
+
+function getDirectSiteFallbackClient(supabase: ReturnType<typeof getServerSupabase>) {
+  try {
+    return getServiceClient();
+  } catch {
+    return supabase;
+  }
+}
+
+async function fetchRecruitingBrowsePage(
+  supabase: ReturnType<typeof getServerSupabase>,
+  activeReleaseTag: string | null,
+  from: number,
+  to: number,
+): Promise<{ trialsData: PublicTrial[]; totalCount: number }> {
+  let browseQuery = supabase
+    .from("trials")
+    .select(TRIALS_BASE_BROWSE_SELECT, { count: "estimated" })
+    .eq("status_bucket", "Recruiting")
+    .order("nct_id", { ascending: true })
+    .range(from, to);
+
+  if (activeReleaseTag) {
+    browseQuery = browseQuery.eq("build_tag", activeReleaseTag);
+  }
+
+  const { data: supabaseData, count: supabaseCount, error } = await browseQuery;
+  if (error) throw error;
+
+  return {
+    trialsData: (supabaseData ?? []).map((trial) => ({
+      ...trial,
+      patient_readiness_score: 0,
+      intervention_mode_primary: null,
+      study_duration_days: null,
+    })) as PublicTrial[],
+    totalCount: supabaseCount ?? supabaseData?.length ?? 0,
+  };
+}
 
 export type FilterCounts = {
   recruiting?: number;
@@ -145,8 +262,26 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
   const urlPhases = typeof sp.phases === "string" ? sp.phases : "";
   const phases = urlPhases ? urlPhases.split(",").map((p) => p.trim()).filter(Boolean) : [];
 
+  // When the user lands on /trials with no filters, default to Recruiting.
+  // An unfiltered sort over 21k+ rows consistently times out; Recruiting is fast
+  // and is the right default for patients who want to enroll in active studies.
+  const defaultRecruitingApplied =
+    !statusBucketRaw &&
+    conditionFilterValues.length === 0 &&
+    !q &&
+    phases.length === 0;
+
+  const broadBrowseSortApplied =
+    conditionFilterValues.length === 0 &&
+    !q &&
+    phases.length === 0 &&
+    !effectiveZip &&
+    !urlAge &&
+    !urlSex;
+
   // -- GEOSPATIAL LOGIC START --
   const supabase = getServerSupabase();
+  const activeReleaseTagPromise = fetchActiveReleaseTag(supabase);
   let location = null;
   let proximityApplied = false;
   let proximityTitle = "";
@@ -163,85 +298,141 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
   let nearbyIds: string[] | null = null;
   let expansionApplied = false;
   let expansionNearestMiles: number | null = null;
+  let proximityTotalCount: number | null = null;
+  let locationSearchFailed = false;
 
   if (location) {
-    const nearest = await fetchNearestSitesMeta(
-      supabase,
-      location.lat,
-      location.lon,
-      effectiveRadius
-    );
+    const canUseFastProximityPage =
+      !q &&
+      phases.length === 0 &&
+      !urlAge &&
+      !urlSex;
 
-    if (!nearest.error && nearest.idsWithinRadius.length > 0) {
-      metaByNctId = nearest.metaByNctId;
-      nearbyIds = nearest.idsWithinRadius;
-      proximityApplied = true;
+    if (canUseFastProximityPage) {
+      const statusValues = defaultRecruitingApplied
+        ? ["Recruiting"]
+        : parseStatusBuckets(statusBucketRaw).map(toDbStatusBucket);
+      const siteFallbackClient = getDirectSiteFallbackClient(supabase);
+      const fallbackPage = await fetchNearestTrialsPageByBoundingBox(
+        siteFallbackClient,
+        location.lat,
+        location.lon,
+        effectiveRadius,
+        PAGE_SIZE,
+        from,
+        conditionFilterValues,
+        statusValues,
+      );
+
+      if (!fallbackPage.error && fallbackPage.idsWithinRadius.length > 0) {
+        metaByNctId = fallbackPage.metaByNctId;
+        nearbyIds = fallbackPage.idsWithinRadius;
+        proximityTotalCount = fallbackPage.totalCount;
+        proximityApplied = true;
+      } else {
+        const nearestPage = await fetchNearestTrialsPage(
+          supabase,
+          location.lat,
+          location.lon,
+          effectiveRadius,
+          PAGE_SIZE,
+          from,
+          conditionFilterValues,
+          statusValues,
+        );
+
+        if (!nearestPage.error && nearestPage.idsWithinRadius.length > 0) {
+          metaByNctId = nearestPage.metaByNctId;
+          nearbyIds = nearestPage.idsWithinRadius;
+          proximityTotalCount = nearestPage.totalCount;
+          proximityApplied = true;
+        } else if (nearestPage.error || fallbackPage.error) {
+          locationSearchFailed = true;
+        } else {
+          const expanded = await fetchNearestTrialsPage(
+            supabase,
+            location.lat,
+            location.lon,
+            null,
+            PAGE_SIZE,
+            from,
+            conditionFilterValues,
+            statusValues,
+          );
+          if (!expanded.error && expanded.idsWithinRadius.length > 0) {
+            metaByNctId = expanded.metaByNctId;
+            nearbyIds = expanded.idsWithinRadius;
+            proximityTotalCount = expanded.totalCount;
+            proximityApplied = true;
+            expansionApplied = true;
+            const distances = Object.values(expanded.metaByNctId)
+              .map(m => m.nearest_miles)
+              .filter((d): d is number => d !== null && d !== undefined);
+            if (distances.length > 0) expansionNearestMiles = Math.round(Math.min(...distances));
+          }
+        }
+      }
     } else {
-      // No results within radius — silently expand to find nearest trials regardless of distance
-      const expanded = await fetchNearestSitesMeta(
+      const nearest = await fetchNearestSitesMeta(
         supabase,
         location.lat,
         location.lon,
-        null, // no radius cap
-        PAGE_SIZE * 2,
+        effectiveRadius
       );
-      if (!expanded.error && expanded.idsWithinRadius.length > 0) {
-        metaByNctId = expanded.metaByNctId;
-        nearbyIds = expanded.idsWithinRadius;
+
+      if (!nearest.error && nearest.idsWithinRadius.length > 0) {
+        metaByNctId = nearest.metaByNctId;
+        nearbyIds = nearest.idsWithinRadius;
         proximityApplied = true;
-        expansionApplied = true;
-        // Find the closest distance among returned results
-        const distances = Object.values(expanded.metaByNctId)
-          .map(m => m.nearest_miles)
-          .filter((d): d is number => d !== null && d !== undefined);
-        if (distances.length > 0) expansionNearestMiles = Math.round(Math.min(...distances));
+      } else if (nearest.error) {
+        locationSearchFailed = true;
+      } else {
+        // No results within radius — silently expand to find nearest trials regardless of distance
+        const expanded = await fetchNearestSitesMeta(
+          supabase,
+          location.lat,
+          location.lon,
+          null, // no radius cap
+          PAGE_SIZE * 2,
+        );
+        if (!expanded.error && expanded.idsWithinRadius.length > 0) {
+          metaByNctId = expanded.metaByNctId;
+          nearbyIds = expanded.idsWithinRadius;
+          proximityApplied = true;
+          expansionApplied = true;
+          // Find the closest distance among returned results
+          const distances = Object.values(expanded.metaByNctId)
+            .map(m => m.nearest_miles)
+            .filter((d): d is number => d !== null && d !== undefined);
+          if (distances.length > 0) expansionNearestMiles = Math.round(Math.min(...distances));
+        } else if (expanded.error) {
+          locationSearchFailed = true;
+        }
       }
     }
   }
+  if (location && effectiveZip && !proximityApplied) {
+    locationSearchFailed = true;
+  }
   // -- GEOSPATIAL LOGIC END --
+
+  // The view's exact count can timeout on broad pages, while its estimated count can be
+  // wildly wrong. Keep estimated count only as a query-planning hint for broad sorted
+  // reads, then compute the display total from the indexed base trials table below.
+  const useEstimatedCountForPlan = conditionFilterValues.length === 0 && !Boolean(q);
 
   let query = supabase
     .from("trials_serving_latest")
-    .select(TRIALS_PUBLIC_SELECT, { count: "exact" });
+    .select(TRIALS_PUBLIC_SELECT, { count: useEstimatedCountForPlan ? "estimated" : "exact" });
 
   // Apply Filters
   if (conditionFilterValues.length > 0) {
     query = query.overlaps("conditions", conditionFilterValues);
   }
   if (q) query = query.ilike("title", `%${q}%`);
-  const statusBuckets = parseStatusBuckets(statusBucketRaw);
-  if (statusBuckets.length === 1) {
-    query = query.eq("status_bucket", toDbStatusBucket(statusBuckets[0]));
-  } else if (statusBuckets.length > 1) {
-    query = query.in("status_bucket", statusBuckets.map(toDbStatusBucket));
-  }
 
-  // Age-based filtering (min/max are numeric in years)
-  if (typeof effectiveAge === "number" && Number.isFinite(effectiveAge)) {
-    const age = Math.max(0, Math.round(effectiveAge));
-    // (min_age_years is null OR min_age_years <= age) AND
-    // (max_age_years is null OR max_age_years >= age)
-    query = query.or(
-      [
-        `and(min_age_years.is.null,max_age_years.is.null)`,
-        `and(min_age_years.is.null,max_age_years.gte.${age})`,
-        `and(min_age_years.lte.${age},max_age_years.is.null)`,
-        `and(min_age_years.lte.${age},max_age_years.gte.${age})`,
-      ].join(","),
-    );
-  }
-
-  // Gender-based filtering
-  const sexFilter = normalizeSexFilter(effectiveSex);
-  if (sexFilter === "male") {
-    query = query.in("gender", ["MALE", "male", "ALL", "all", "BOTH", "both", "ANY", "any"]);
-  } else if (sexFilter === "female") {
-    query = query.in("gender", ["FEMALE", "female", "ALL", "all", "BOTH", "both", "ANY", "any"]);
-  }
-
-  if (phases.length > 0) {
-    query = query.or(buildPhaseOrFilter(phases));
-  }
+  query = applyStatusFilter(query, statusBucketRaw, defaultRecruitingApplied);
+  query = applyEligibilityFilters(query, effectiveAge, effectiveSex, phases);
 
   if (proximityApplied && nearbyIds) {
     query = query.in("nct_id", nearbyIds);
@@ -249,9 +440,33 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
 
   let trialsData: PublicTrial[] = [];
   let totalCount = 0;
+  const exactTotalCountPromise = (async () => {
+    if (proximityApplied && nearbyIds) return null;
+    if (broadBrowseSortApplied) return null;
+
+    const activeReleaseTag = await activeReleaseTagPromise;
+    if (!activeReleaseTag) return null;
+
+    let countQuery = supabase
+      .from("trials")
+      .select("nct_id", { count: "exact", head: true })
+      .eq("build_tag", activeReleaseTag);
+
+    if (conditionFilterValues.length > 0) {
+      countQuery = countQuery.overlaps("conditions", conditionFilterValues);
+    }
+    if (q) countQuery = countQuery.ilike("title", `%${q}%`);
+
+    countQuery = applyStatusFilter(countQuery, statusBucketRaw, defaultRecruitingApplied);
+    countQuery = applyEligibilityFilters(countQuery, effectiveAge, effectiveSex, phases);
+
+    const { count, error } = await countQuery;
+    if (error) return null;
+    return count;
+  })();
 
   if (proximityApplied && nearbyIds) {
-    // PROXIMITY MODE: Fetch All -> Sort JS -> Paginate
+    // PROXIMITY MODE: fast path already paginates nearby IDs in Postgres.
     const { data: supabaseData, error } = await query;
     if (error) throw error;
     
@@ -264,21 +479,34 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
        return idxA - idxB;
     });
     
-    totalCount = sortedData.length;
-    trialsData = sortedData.slice(from, to + 1);
+    totalCount = proximityTotalCount ?? sortedData.length;
+    trialsData = proximityTotalCount == null ? sortedData.slice(from, to + 1) : sortedData;
     proximityTitle = `trials near ${effectiveZip}`;
+  } else if (broadBrowseSortApplied && defaultRecruitingApplied) {
+    const activeReleaseTag = await activeReleaseTagPromise;
+    const browsePage = await fetchRecruitingBrowsePage(supabase, activeReleaseTag, from, to);
+    trialsData = browsePage.trialsData;
+    totalCount = browsePage.totalCount;
+  } else if (location && !proximityApplied && effectiveZip && locationSearchFailed) {
+    const activeReleaseTag = await activeReleaseTagPromise;
+    const browsePage = await fetchRecruitingBrowsePage(supabase, activeReleaseTag, from, to);
+    trialsData = browsePage.trialsData;
+    totalCount = browsePage.totalCount;
   } else {
     // STANDARD MODE
-    // Prioritize Recruiting status manually by putting quality and default sort first
-    // Use the default sort from applyTrialsSort (Quality Score -> Title) overrides brute status sort
-    query = applyTrialsSort(query);
+    // Broad browse pages should lead with patient-facing content readiness.
+    // Filtered searches keep the normal quality sort so relevance is not swamped by metadata completeness.
+    query = broadBrowseSortApplied
+      ? query.order("nct_id", { ascending: true })
+      : applyTrialsSort(query);
     query = query.range(from, to);
     
     const { data: supabaseData, count: supabaseCount, error } = await query;
     if (error) throw error;
     
     trialsData = (supabaseData ?? []) as PublicTrial[];
-    totalCount = supabaseCount ?? trialsData.length;
+    const exactTotalCount = await exactTotalCountPromise;
+    totalCount = exactTotalCount ?? supabaseCount ?? trialsData.length;
   }
 
   // Enrich with Geo Data
@@ -349,5 +577,7 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
     profileMatchResult,
     expansionApplied,
     expansionNearestMiles,
+    defaultRecruitingApplied,
+    locationSearchFailed,
   };
 }
