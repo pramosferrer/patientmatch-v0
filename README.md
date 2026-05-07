@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PatientMatch v0
 
-## Getting Started
+PatientMatch is a Next.js App Router application for privacy-first clinical trial discovery.
 
-First, run the development server:
+## Local Development
+
+Run from the repository root:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+Before pushing patient-facing changes:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run lint -- --quiet
+npm run build
+```
 
-## Learn More
+Run targeted Playwright tests when touching matching, questionnaire, or trial browsing flows:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+CI=1 npx playwright test e2e/screener.spec.ts --reporter=line
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deployment
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The active Next.js app lives at the repository root. Vercel Root Directory must be blank, Output Directory must be blank, and builds should run `npm run build` from the repository root.
 
-## Deploy on Vercel
+Branch pushes create Vercel Preview deployments. Merging to `main` creates the Production deployment.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full runbook.

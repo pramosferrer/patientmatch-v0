@@ -73,7 +73,7 @@ To optimize performance, the storefront should follow these selection rules:
 
 ## Questionnaire JSON (PMQ v10)
 
-The `questionnaire_json` field follows the PMQ v10 specification. It is converted to `UiQuestion[]` by `frontend/lib/pmqAdapter.ts`.
+The `questionnaire_json` field follows the PMQ v10 specification. It is converted to `UiQuestion[]` by `lib/pmqAdapter.ts`.
 
 ### Global Profile Deduplication
 The storefront automatically filters out questions that are already answered in the user's **Match Profile**:

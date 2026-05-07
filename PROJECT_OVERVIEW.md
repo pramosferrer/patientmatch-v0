@@ -9,10 +9,14 @@ This repository (`patientmatch`) is the **Storefront**. It is responsible for th
 3.  **Storefront (`patientmatch`)**: (This Repo) Next.js App Router application.
 
 ## Folders
-- `/frontend`: Next.js app (UI/UX, patient intake, trial display)
-- `/frontend/shared`: Shared config, constants, utilities
+- `/app`: Next.js App Router pages and route handlers
+- `/components`: UI components
+- `/lib`: Supabase access, matching logic, questionnaire adapter, and utilities
+- `/shared`: Shared config, constants, utilities
 - `/supabase/migrations`: Database schema versioning (optional)
 - `/docs`: Project documentation and architecture notes
+
+Deployment note: the active Next.js app lives at the repository root. Older notes may mention `/frontend`; that subdirectory was retired in May 2026 and should not be used for builds or deployments.
 
 ## Stack
 - **Frontend**: Next.js (App Router), Tailwind CSS, Shadcn/UI, Framer Motion
@@ -100,19 +104,19 @@ Added comprehensive UX polish to the trials list page with the following enhance
 - No breaking API changes
 
 **Files Modified:**
-- `/frontend/components/ui/EmptyState.tsx` (new)
-- `/frontend/components/ui/ErrorState.tsx` (new)
-- `/frontend/components/ui/scroll-area.tsx` (new)
-- `/frontend/components/trials/TrialCard.tsx` (enhanced)
-- `/frontend/components/trials/LoadMoreTrials.tsx` (enhanced)
-- `/frontend/components/trials/CompareDrawer.tsx` (new)
-- `/frontend/components/trials/StickyHelper.tsx` (new)
-- `/frontend/components/trials/JsonLd.tsx` (new)
-- `/frontend/lib/compare/state.ts` (new)
-- `/frontend/lib/location/distance.ts` (new)
-- `/frontend/lib/analytics.ts` (enhanced)
-- `/frontend/app/trials/page.tsx` (enhanced)
-- `/frontend/package.json` (Playwright scripts)
+- `/components/ui/EmptyState.tsx` (new)
+- `/components/ui/ErrorState.tsx` (new)
+- `/components/ui/scroll-area.tsx` (new)
+- `/components/trials/TrialCard.tsx` (enhanced)
+- `/components/trials/LoadMoreTrials.tsx` (enhanced)
+- `/components/trials/CompareDrawer.tsx` (new)
+- `/components/trials/StickyHelper.tsx` (new)
+- `/components/trials/JsonLd.tsx` (new)
+- `/lib/compare/state.ts` (new)
+- `/lib/location/distance.ts` (new)
+- `/lib/analytics.ts` (enhanced)
+- `/app/trials/page.tsx` (enhanced)
+- `/package.json` (Playwright scripts)
 - `/playwright.config.ts` (new)
 - `/e2e/trials.spec.ts` (new)
 - `/.github/workflows/lighthouse.yml` (new)
