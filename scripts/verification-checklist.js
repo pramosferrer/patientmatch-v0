@@ -14,8 +14,8 @@ const checks = [
     id: 'labels-reasons-identical',
     description: 'Labels/reasons identical pre/post screener',
     files: [
-      'frontend/lib/matchEngine.ts',
-      'frontend/lib/matching/evaluator.ts'
+      'lib/matchEngine.ts',
+      'lib/matching/evaluator.ts'
     ],
     check: (content, file) => {
       if (file.includes('matchEngine')) {
@@ -31,7 +31,7 @@ const checks = [
     id: 'slide-over-behavior',
     description: 'Slide-over preserves scroll and deep-links work',
     files: [
-      'frontend/app/trials/page.client.tsx'
+      'app/trials/page.client.tsx'
     ],
     check: (content) => {
       return content.includes('Sheet') && content.includes('open={open}') && content.includes('setOpen');
@@ -41,7 +41,7 @@ const checks = [
     id: 'deep-link-behavior',
     description: 'Deep-link renders full page',
     files: [
-      'frontend/app/trial/[nct_id]/screen/page.tsx'
+      'app/trial/[nct_id]/screen/page.tsx'
     ],
     check: (content) => {
       return content.includes('TrialScreenClient') || content.includes('confirm-fit');
@@ -71,10 +71,10 @@ const checks = [
     id: 'no-store-match-prefilter',
     description: 'No-store on match/prefilter fetches',
     files: [
-      'frontend/app/api/match/route.ts',
-      'frontend/app/api/prefilter/route.js',
-      'frontend/components/match/ConditionFlow.tsx',
-      'frontend/components/match/ChatFlow.tsx'
+      'app/api/match/route.ts',
+      'app/api/prefilter/route.js',
+      'components/match/ConditionFlow.tsx',
+      'components/match/ChatFlow.tsx'
     ],
     check: (content, file) => {
       if (file.includes('route')) {
@@ -87,7 +87,7 @@ const checks = [
     id: 'small-initial-fetch',
     description: 'Small initial fetch (24 trials) with load more',
     files: [
-      'frontend/app/trials/page.client.tsx'
+      'app/trials/page.client.tsx'
     ],
     check: (content) => {
       return content.includes('slice(0, 24)');
@@ -97,8 +97,8 @@ const checks = [
     id: 'facets-send-slugs',
     description: 'Faceted filters send slugs to API',
     files: [
-      'frontend/components/trials/TrialsFilters.tsx',
-      'frontend/app/trials/page.client.tsx'
+      'components/trials/TrialsFilters.tsx',
+      'app/trials/page.client.tsx'
     ],
     check: (content) => {
       return content.includes('visitModel') && content.includes('ageBand');
@@ -108,7 +108,7 @@ const checks = [
     id: 'facets-url-reflects-state',
     description: 'URL reflects facet state for shareability',
     files: [
-      'frontend/components/trials/TrialsFilters.tsx'
+      'components/trials/TrialsFilters.tsx'
     ],
     check: (content) => {
       return content.includes('visitModel') && content.includes('ageBand');
@@ -118,7 +118,7 @@ const checks = [
     id: 'events-fire-once',
     description: 'Events fire exactly once per action',
     files: [
-      'frontend/lib/analytics.ts'
+      'lib/analytics.ts'
     ],
     check: (content) => {
       return content.includes('track') && content.includes('screener_submitted');
@@ -128,7 +128,7 @@ const checks = [
     id: 'payloads-slug-only',
     description: 'Event payloads contain slugs only (no PII)',
     files: [
-      'frontend/lib/analytics.ts'
+      'lib/analytics.ts'
     ],
     check: (content) => {
       return content.includes('export const track') && content.includes('condition_slug') && content.includes('nct_id');
@@ -138,7 +138,7 @@ const checks = [
     id: 'condition-pages-sitemap',
     description: 'Condition pages in sitemap with ISR',
     files: [
-      'frontend/app/sitemap.xml/route.js'
+      'app/sitemap.xml/route.js'
     ],
     check: (content) => {
       return content.includes('fetchAllConditions') && content.includes('conditions/');
@@ -148,7 +148,7 @@ const checks = [
     id: 'structured-data-present',
     description: 'Structured data present on condition pages',
     files: [
-      'frontend/app/conditions/[slug]/page.tsx'
+      'app/conditions/[slug]/page.tsx'
     ],
     check: (content) => {
       return content.includes('MedicalCondition') && content.includes('JsonLd');

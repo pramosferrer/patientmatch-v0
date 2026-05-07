@@ -8,9 +8,9 @@ try {
   process.exit(1);
 }
 
-const phrasebook = require("../frontend/lib/criteria/phrasebook") as typeof import("../frontend/lib/criteria/phrasebook");
+const phrasebook = require("../lib/criteria/phrasebook") as typeof import("../lib/criteria/phrasebook");
 const { toPatientLabel } = phrasebook;
-type CriteriaClause = import("../frontend/lib/criteria/adapter").CriteriaClause;
+type CriteriaClause = import("../lib/criteria/adapter").CriteriaClause;
 
 const failures: string[] = [];
 
