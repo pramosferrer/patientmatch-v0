@@ -7,6 +7,15 @@ export interface UserProfile {
   diagnosis_confirmed?: boolean | null;
 }
 
+type PmqLogicEntry = {
+  type?: string;
+  section?: string;          // "inclusion" | "exclusion"
+  disqualify_when?: string;  // "Yes" | "No"
+  qualifies_when?: string;
+  params?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
 type PmqQuestion = {
   id?: string;
   key?: string;
@@ -18,6 +27,7 @@ type PmqQuestion = {
   source?: string;
   answer_type?: string;
   validation?: any;
+  logic?: PmqLogicEntry[];
 };
 
 export type PmqAdapterResult = {
@@ -26,23 +36,31 @@ export type PmqAdapterResult = {
   initialAnswers: Record<string, any>;
 };
 
+function preserveCase(source: string, replacement: string): string {
+  return source[0] === source[0]?.toUpperCase()
+    ? `${replacement[0]?.toUpperCase() ?? ""}${replacement.slice(1)}`
+    : replacement;
+}
+
 function transformForCaregiver(text: string): string {
   return text
-    .replace(/\bHave you\b/g, "Have they")
-    .replace(/\bDo you\b/g, "Do they")
-    .replace(/\bAre you\b/g, "Are they")
-    .replace(/\bWere you\b/g, "Were they")
-    .replace(/\bCan you\b/g, "Can they")
-    .replace(/\bDid you\b/g, "Did they")
-    .replace(/\bWill you\b/g, "Will they")
-    .replace(/\bYour\b/g, "Their")
-    .replace(/\byour\b/g, "their")
-    .replace(/\byourself\b/g, "themselves")
-    .replace(/\byou've\b/g, "they've")
-    .replace(/\byou're\b/g, "they're")
-    .replace(/\byou are\b/g, "they are")
-    .replace(/\byou have\b/g, "they have")
-    .replace(/\byou\b/g, "they");
+    .replace(/\byourself\b/gi, (match) => preserveCase(match, "themselves"))
+    .replace(/\byou've\b/gi, (match) => preserveCase(match, "they've"))
+    .replace(/\byou're\b/gi, (match) => preserveCase(match, "they're"))
+    .replace(/\byou are\b/gi, (match) => preserveCase(match, "they are"))
+    .replace(/\byou have\b/gi, (match) => preserveCase(match, "they have"))
+    .replace(/\byou can\b/gi, (match) => preserveCase(match, "they can"))
+    .replace(/\byou could\b/gi, (match) => preserveCase(match, "they could"))
+    .replace(/\byou will\b/gi, (match) => preserveCase(match, "they will"))
+    .replace(/\byou would\b/gi, (match) => preserveCase(match, "they would"))
+    .replace(/\b(have|do|does|are|were|can|could|did|will|would|should)\s+you\b/gi, (match, aux: string) => {
+      const replacement = `${aux.toLowerCase()} they`;
+      return preserveCase(match, replacement);
+    })
+    .replace(/\byour\b/gi, (match) => preserveCase(match, "their"))
+    // Subject-position "you" should be handled above. Remaining instances are
+    // object-position, e.g. "explained to you" or "apply to you".
+    .replace(/\byou\b/gi, (match) => preserveCase(match, "them"));
 }
 
 const hasValue = (value: unknown): boolean => {
@@ -59,6 +77,55 @@ const setIfPresent = (target: Record<string, any>, key: string, value: unknown) 
 
 // Keys that represent critical profile fields that should be in main flow if not prefilled
 const CRITICAL_PROFILE_KEYS = ["age_years", "sex_at_birth", "diagnosis_confirmed"];
+
+const NON_TRIGGERING_CHOICE_VALUES = [
+  "No",
+  "None of the above",
+  "Not applicable",
+  "Not sure",
+  "Unsure",
+  "I don't know",
+];
+
+function buildNumericRule(logic?: PmqLogicEntry): Record<string, unknown> | undefined {
+  const params = logic?.params;
+  if (!params || typeof params !== "object") return undefined;
+
+  const operator = typeof params.operator === "string" ? params.operator.trim() : "";
+  const value = params.threshold ?? params.value;
+  if (operator && value !== undefined && value !== null) {
+    return { operator, value };
+  }
+
+  const min = params.min ?? params.min_age;
+  const max = params.max ?? params.max_age;
+  if (min !== undefined || max !== undefined) {
+    return { operator: "between", min, max };
+  }
+
+  return undefined;
+}
+
+function buildChoiceRule(
+  kind: UiQuestion["kind"],
+  disqualifyWhen: string | null,
+  qualifiesWhen: string | null,
+  options: string[],
+): Record<string, unknown> | undefined {
+  if (disqualifyWhen) {
+    const normalized = disqualifyWhen.trim().toLowerCase();
+    if (kind === "choice" && normalized === "yes" && !options.some((option) => option.toLowerCase() === "yes")) {
+      return { operator: "any_except", value: NON_TRIGGERING_CHOICE_VALUES };
+    }
+    return { operator: "equals", value: disqualifyWhen };
+  }
+
+  if (qualifiesWhen) {
+    return { operator: "equals", value: qualifiesWhen };
+  }
+
+  return undefined;
+}
 
 function convertPmqQuestion(
   question: PmqQuestion,
@@ -156,8 +223,8 @@ function convertPmqQuestion(
   } else if (options.length > 0 || question.answer_type === "single_select" || question.answer_type === "multi_select") {
     // Check if options are Yes/No variants - treat as boolean
     const optionsLower = options.map(o => o.toLowerCase().trim());
-    const isYesNo = optionsLower.every(o => 
-      ["yes", "no", "not sure", "unsure", "maybe", "i don't know"].includes(o)
+    const isYesNo = optionsLower.every(o =>
+      ["yes", "no", "not applicable", "not sure", "unsure", "maybe", "i don't know"].includes(o)
     );
     
     if (isYesNo && options.length <= 3) {
@@ -165,8 +232,9 @@ function convertPmqQuestion(
       kind = "boolean";
     } else {
       kind = "choice";
-      // Check if multi-select based on text
-      multiSelect = textLower.includes("all that apply") || 
+      // Check if multi-select based on PMQ contract first, then text hints.
+      multiSelect = question.answer_type === "multi_select" ||
+                    textLower.includes("all that apply") ||
                     textLower.includes("select all") ||
                     textLower.includes("check all");
     }
@@ -178,12 +246,32 @@ function convertPmqQuestion(
     textLower.startsWith("are you") ||
     textLower.includes("diagnosed with");
   const clinicOnly = question.clinic_only === true && !patientOverride;
+
+  // Derive clause type from the criterion logic entry — the backend sets
+  // section="exclusion" + disqualify_when="Yes" for exclusion criteria.
+  const criterionLogic = (question.logic ?? []).find((l) => l.type === "criterion");
+  const disqualifyWhen = typeof criterionLogic?.disqualify_when === "string"
+    ? criterionLogic.disqualify_when.trim()
+    : null;
+  const qualifiesWhen = typeof criterionLogic?.qualifies_when === "string"
+    ? criterionLogic.qualifies_when.trim()
+    : null;
+  const isExclusion =
+    criterionLogic?.section === "exclusion" ||
+    Boolean(disqualifyWhen);
+
+  const clauseRule: Record<string, unknown> | undefined =
+    kind === "number"
+      ? buildNumericRule(criterionLogic)
+      : buildChoiceRule(kind, disqualifyWhen, qualifiesWhen, options);
+
   const clause: CriteriaClause = {
     criterion_id: key,
-    type: "inclusion",
+    type: isExclusion ? "exclusion" : "inclusion",
     category: "pmq",
     source: clinicOnly ? "site" : "patient",
     question_text: text,
+    ...(clauseRule ? { rule: clauseRule } : {}),
   };
 
   const uiQuestion: UiQuestion = {
@@ -233,14 +321,6 @@ export function pmqToUiQuestions(
   const sourceQuestions = Array.isArray(pmq?.questions) ? (pmq.questions as PmqQuestion[]) : [];
   const sourceOptional = Array.isArray(pmq?.optional_questions) ? (pmq.optional_questions as PmqQuestion[]) : [];
 
-  if (process.env.NODE_ENV !== "production") {
-    console.log("Adapter Input:", {
-      questionCount: sourceQuestions.length,
-      optionalCount: sourceOptional.length,
-      hasProfile: Boolean(profile),
-    });
-  }
-
   const mainQuestions: UiQuestion[] = [];
   const optionalQuestions: UiQuestion[] = [];
 
@@ -269,14 +349,6 @@ export function pmqToUiQuestions(
     }
   });
 
-  if (process.env.NODE_ENV !== "production") {
-    console.log("Adapter Output:", {
-      mainCount: mainQuestions.length,
-      optionalCount: optionalQuestions.length,
-      answersCount: Object.keys(initialAnswers).length,
-    });
-  }
-
   // Sort questions by priority: demographics first, then clinical
   const getQuestionPriority = (q: UiQuestion): number => {
     const id = q.id.toLowerCase();
@@ -286,6 +358,7 @@ export function pmqToUiQuestions(
     // Demographics - highest priority (1-3)
     if (combined.includes('age')) return 1;
     if (combined.includes('sex') || combined.includes('gender')) return 2;
+    if (combined.includes('caregiver') || combined.includes('professional role') || combined.includes('clinician') || combined.includes('prescriber')) return 3;
     if (combined.includes('diagnos') || combined.includes('condition')) return 3;
     
     // Pregnancy/reproductive - only for females (4)

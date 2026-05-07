@@ -1,56 +1,149 @@
-import Link from 'next/link';
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
-export const metadata = { title: "About Us • PatientMatch" };
+export const metadata = {
+  title: "About PatientMatch",
+  description:
+    "PatientMatch is a privacy-first clinical trial discovery project built from public trial data.",
+};
 
-export default function AboutPage() {
+const principles = [
+  {
+    title: "Readable public data",
+    body: "ClinicalTrials.gov listings are public, but they are rarely written for patients. We translate the structure into plain-language summaries, practical filters, and screening questions.",
+  },
+  {
+    title: "Private by default",
+    body: "You can browse and pre-screen without giving us your name, email, or phone number. We do not sell leads or send patient details to trial sites.",
+  },
+  {
+    title: "Pre-screening, not medical advice",
+    body: "PatientMatch can flag likely fits and obvious blockers. Final eligibility still depends on records, labs, imaging, and site review.",
+  },
+];
+
+const missionRows = [
+  "Make trial discovery usable before someone shares contact information.",
+  "Show why a study may or may not fit in language patients can discuss with a clinician.",
+  "Point back to official listings instead of hiding the source of truth.",
+];
+
+const founderRows = [
+  "PatientMatch is being built independently by Pablo Ramos Ferrer.",
+  "The work is focused on patient utility: fewer opaque listings, less lead generation, and clearer next steps.",
+  "The product stays intentionally narrow: explain public information, support private pre-screening, and help people prepare better questions.",
+];
+
+function CheckRows({ rows }: { rows: string[] }) {
   return (
-    <main className="max-w-7xl mx-auto px-6 py-16 md:py-20">
-      <div className="max-w-4xl">
-        <h1 className="font-heading tracking-tightish leading-tight text-4xl md:text-5xl text-pm-ink font-bold mb-6">About PatientMatch</h1>
-        <p className="text-pm-body text-base leading-7 mb-8">
-          PatientMatch makes it fast and simple for people to discover clinical trials that fit.
-          We translate complex criteria into plain language, pre‑screen privately, and connect
-          patients with high‑quality studies—without requiring PII to get started.
-        </p>
-
-        <section className="mb-12">
-          <h2 className="font-heading text-pm-ink text-2xl font-semibold mb-4">Our Mission</h2>
-          <p className="text-pm-body leading-relaxed">
-            Bridge the gap between patients and clinical research with a privacy‑first, human‑friendly
-            experience. We aim to reduce friction and confusion so more people can access promising
-            options—while saving time for research teams.
-          </p>
-        </section>
-
-        <section className="mb-12">
-          <h2 className="font-heading text-pm-ink text-2xl font-semibold mb-4">Founder</h2>
-          <p className="text-pm-body leading-relaxed">
-            <strong>Pablo Ramos Ferrer</strong> is building PatientMatch with a product and data mindset:
-            focus the experience on what people actually need, automate the busywork, and keep privacy
-            non‑negotiable. If you&apos;re interested in partnering or giving feedback, we&apos;d love to hear from you.
-          </p>
-        </section>
-
-        <section className="mb-12">
-          <h2 className="font-heading text-pm-ink text-2xl font-semibold mb-4">Company</h2>
-          <p className="text-pm-body leading-relaxed">
-            We&apos;re an early‑stage project focused on conditions with high unmet need and active research.
-            We collaborate with physicians, research sites, and advocacy groups. Sponsors and sites can
-            list trials and receive qualified, de‑identified leads.
-          </p>
-        </section>
-
-        <div className="flex flex-wrap gap-4">
-          <Link href="/contact" className="inline-flex items-center rounded-xl px-6 py-3 border border-pm-accent/20 bg-pm-accent/5 text-pm-accent hover:bg-pm-accent/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-pm-ring font-medium">
-            Contact
-          </Link>
-          <Link href="/list-trial" className="inline-flex items-center rounded-xl px-6 py-3 border border-pm-accent/10 bg-pm-accent/5 text-pm-accent hover:bg-pm-accent/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-pm-ring font-medium">
-            For Research Sites
-          </Link>
+    <div className="divide-y divide-border/40">
+      {rows.map((row) => (
+        <div key={row} className="grid grid-cols-[20px_1fr] gap-4 py-4">
+          <span className="pt-0.5 text-[15px] font-semibold text-primary" aria-hidden="true">
+            ✓
+          </span>
+          <p className="text-[15.5px] leading-relaxed text-muted-foreground">{row}</p>
         </div>
-      </div>
-    </main>
+      ))}
+    </div>
   );
 }
 
+export default function AboutPage() {
+  return (
+    <main className="bg-background">
+      <section className="bg-white py-16 md:py-24">
+        <div className="pm-container">
+          <div className="max-w-3xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+              About PatientMatch
+            </p>
+            <h1
+              className="mt-5 font-display font-normal leading-[1.08] tracking-[-0.022em] text-foreground"
+              style={{ fontSize: "clamp(36px, 4.2vw, 56px)" }}
+            >
+              Clinical trial search should feel clear, private, and{" "}
+              <em className="italic text-primary">human.</em>
+            </h1>
+            <p className="mt-6 max-w-2xl text-[17px] leading-relaxed text-muted-foreground md:text-[17.5px]">
+              PatientMatch helps people find active clinical trials, answer patient-friendly
+              screening questions, and prepare for a more focused conversation with their doctor or
+              a study team.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Button asChild variant="brand" className="h-12 px-7 text-[15px]">
+                <Link href="/trials">Find trials</Link>
+              </Button>
+              <Button asChild variant="outline" className="h-12 px-7 text-[15px]">
+                <Link href="/privacy">Read the privacy policy</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
 
+      <section className="bg-[#E8EDE6] py-24">
+        <div className="pm-container grid gap-12 md:grid-cols-[5fr_7fr] md:gap-20">
+          <div className="md:sticky md:top-24 md:self-start">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+              Mission
+            </p>
+            <h2
+              className="mt-4 font-display font-normal leading-[1.14] tracking-[-0.015em] text-foreground"
+              style={{ fontSize: "clamp(26px, 3vw, 40px)" }}
+            >
+              Turn registry data into a better patient decision.
+            </h2>
+            <p className="mt-5 text-[16px] leading-relaxed text-muted-foreground">
+              We focus on the practical gap between finding a listing and knowing what to ask next.
+            </p>
+          </div>
+          <CheckRows rows={missionRows} />
+        </div>
+      </section>
+
+      <section className="bg-white py-24">
+        <div className="pm-container grid gap-12 md:grid-cols-[5fr_7fr] md:gap-20">
+          <div className="md:sticky md:top-24 md:self-start">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+              Principles
+            </p>
+            <h2
+              className="mt-4 font-display font-normal leading-[1.14] tracking-[-0.015em] text-foreground"
+              style={{ fontSize: "clamp(26px, 3vw, 40px)" }}
+            >
+              Built for trust before conversion.
+            </h2>
+          </div>
+          <div className="divide-y divide-border/40">
+            {principles.map((item) => (
+              <article key={item.title} className="py-6 first:pt-0">
+                <h3 className="text-[18px] font-semibold text-foreground">{item.title}</h3>
+                <p className="mt-2 text-[15.5px] leading-relaxed text-muted-foreground">
+                  {item.body}
+                </p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-[#E8EDE6] py-24">
+        <div className="pm-container grid gap-12 md:grid-cols-[5fr_7fr] md:gap-20">
+          <div className="md:sticky md:top-24 md:self-start">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+              Founder
+            </p>
+            <h2
+              className="mt-4 font-display font-normal leading-[1.14] tracking-[-0.015em] text-foreground"
+              style={{ fontSize: "clamp(26px, 3vw, 40px)" }}
+            >
+              Independent, practical, and privacy-first.
+            </h2>
+          </div>
+          <CheckRows rows={founderRows} />
+        </div>
+      </section>
+    </main>
+  );
+}
