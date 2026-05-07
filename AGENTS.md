@@ -7,7 +7,7 @@
 
 - ✅ Build UI features in **Next.js App Router (TypeScript)** using Tailwind + shadcn/ui + Framer Motion.
 - ✅ Treat Supabase as the **serving database**. Read public trial + questionnaire data from `public.trials`.
-- ✅ Use the **Direct Injection** pattern: convert `questionnaire_json` → `UiQuestion[]` via `frontend/lib/pmqAdapter.ts`.
+- ✅ Use the **Direct Injection** pattern: convert `questionnaire_json` → `UiQuestion[]` via `lib/pmqAdapter.ts`.
 - ✅ Use `public.trial_sites` for geospatial matching and `public.zip_centroids` for user origin lookup.
 - ✅ Keep the “match profile” (age/sex/zip/diagnosis) as the single source of truth and **dedupe** those questions from trial-specific screens.
 
@@ -22,7 +22,10 @@
 ## 1) Repo scope & structure (CURRENT)
 
 This repo contains:
-- `frontend/` — Next.js App Router app (UI + Next route handlers)
+- `app/` — Next.js App Router pages and route handlers
+- `components/` — UI components
+- `lib/` — data access, questionnaire adapter, matching helpers, and server utilities
+- `shared/`, `hooks/`, `config/` — shared storefront support code
 - `supabase/migrations/` — optional, only if we choose to version DB schema here
 - `docs/` — Documentation for the storefront and serving contract
 
@@ -84,8 +87,8 @@ Policy assumption:
 ## 4) Frontend questionnaire architecture (DO NOT break this)
 
 ### Direct Injection pattern
-- `frontend/lib/pmqAdapter.ts` converts `questionnaire_json` → `{ uiQuestions, initialAnswers }`
-- `frontend/components/screener/Screener.tsx` accepts optional `precalculatedQuestions`.
+- `lib/pmqAdapter.ts` converts `questionnaire_json` → `{ uiQuestions, initialAnswers }`
+- `components/screener/Screener.tsx` accepts optional `precalculatedQuestions`.
 - If `precalculatedQuestions` is provided, bypass all legacy `criteria_json` logic.
 
 ### Match Profile dedupe (mandatory)
@@ -123,10 +126,20 @@ The adapter must filter out globally-known keys when profile exists:
 
 Storefront:
 ```bash
-cd frontend
 npm i
 npm run dev
 ```
 
 Data Pipeline:
 - Lives in `ct_project` repo.
+
+## 9) Deployment invariants
+
+- The active Next.js app is at the repository root. The old `frontend/` app path is retired.
+- Vercel Root Directory must be blank.
+- Vercel Output Directory must be blank / Next.js default.
+- Vercel Build Command should be the default or `npm run build` from the repository root.
+- `package.json` pins Node 20 with `>=20.11.0 <21`.
+- PR branch pushes create Vercel Preview deployments; merging to `main` creates Production.
+- Do not run `cd frontend`, `npm --prefix frontend`, or deploy from a `frontend/` subdirectory.
+- Before pushing patient-facing changes, run `npm run lint -- --quiet`, `npm run build`, and relevant Playwright tests from the repository root.
