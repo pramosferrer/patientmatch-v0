@@ -43,7 +43,7 @@ function categorize(trial: PublicTrial): TrialCategory {
 
 function SectionLabel({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-3 py-3 mt-4 first:mt-0 border-t border-border/30">
+    <div className="mt-5 flex items-center gap-3 border-t border-border/30 pb-3 pt-4 first:mt-4">
       <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground/50">
         {label}
       </span>

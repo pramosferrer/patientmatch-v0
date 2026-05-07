@@ -291,7 +291,7 @@ export default function TrialsFilterBar({
   // ── Pill button base class ──────────────────────────────────────────────────
   const pill = (active?: boolean) =>
     cn(
-      'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-[7px] text-[13.5px] font-medium transition-colors whitespace-nowrap cursor-pointer',
+      'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full border px-3.5 py-[7px] text-[13.5px] font-medium transition-colors whitespace-nowrap cursor-pointer',
       active
         ? 'border-primary/40 bg-primary/8 text-primary'
         : 'border-border/50 bg-white text-foreground hover:border-primary/30 hover:bg-primary/5',
@@ -306,10 +306,10 @@ export default function TrialsFilterBar({
       )}
       <div className="pm-container">
         {/* ── Primary filter row ─────────────────────────────────────────── */}
-        <div className="flex flex-wrap items-center gap-2 py-3">
+        <div className="grid grid-cols-2 items-center gap-2 py-3 sm:flex sm:flex-wrap">
 
           {/* Search */}
-          <div className="relative min-w-[180px] flex-1 max-w-[280px]">
+          <div className="relative col-span-2 min-w-0 sm:min-w-[180px] sm:flex-1 sm:max-w-[280px]">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
             <input
               value={searchInput}
@@ -581,7 +581,7 @@ export default function TrialsFilterBar({
           </Popover>
 
           {/* Sort + count + view toggle — pushed right */}
-          <div className="ml-auto flex items-center gap-3">
+          <div className="col-span-2 mt-1 flex w-full items-center justify-between gap-2 rounded-xl border border-border/40 bg-white/80 p-2 sm:ml-auto sm:mt-0 sm:w-auto sm:border-0 sm:bg-transparent sm:p-0">
             <span className="text-[13px] tabular-nums text-muted-foreground/70 whitespace-nowrap">
               {totalCount.toLocaleString()} trials
             </span>
@@ -644,11 +644,11 @@ export default function TrialsFilterBar({
 
         {/* ── Active filter chips ─────────────────────────────────────────── */}
         {chips.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 pb-2.5">
+          <div className="-mx-4 flex flex-nowrap items-center gap-2 overflow-x-auto px-4 pb-3 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-2.5">
             {chips.map((chip) => (
               <span
                 key={chip.key}
-                className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/8 px-3 py-[5px] text-[12.5px] font-medium text-primary"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-primary/25 bg-primary/8 px-3 py-[5px] text-[12.5px] font-medium text-primary"
               >
                 {chip.label}
                 <button
@@ -663,7 +663,7 @@ export default function TrialsFilterBar({
             {chips.length > 1 && (
               <button
                 onClick={clearAll}
-                className="text-[12.5px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                className="shrink-0 text-[12.5px] font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
                 Clear all
               </button>

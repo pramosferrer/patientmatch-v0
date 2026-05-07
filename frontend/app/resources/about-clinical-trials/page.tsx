@@ -1,434 +1,304 @@
-import { Metadata } from 'next';
-import type { ReactNode } from 'react';
-import {
-  Activity,
-  ClipboardCheck,
-  ClipboardList,
-  Compass,
-  DollarSign,
-  HeartHandshake,
-  Map,
-  Pill,
-  ShieldCheck,
-  Sparkles,
-  UserRound,
-} from 'lucide-react';
-import { MotionSection } from '@/components/motion/MotionSection';
-import { SectionDivider } from '@/components/marketing/SectionBand';
-import { CtaBand } from '@/components/marketing/CtaBand';
-
-type PhaseNode = {
-  badge: string;
-  purpose: string;
-  participants: string;
-};
-
-type TypeTile = {
-  name: string;
-  summary: string;
-  examples: string[];
-  icon: ReactNode;
-};
-
-type SafetyItem = {
-  lead: string;
-  body: string;
-  icon: ReactNode;
-};
-
-type CostItem = {
-  headline: string;
-  body: string;
-  icon: ReactNode;
-};
-
-type WhyItem = {
-  headline: string;
-  body: string;
-  icon: ReactNode;
-};
-
-type FaqItem = {
-  question: string;
-  answer: string;
-};
-
-type GlossaryItem = {
-  term: string;
-  definition: string;
-};
+import { Metadata } from "next";
+import { CtaBand } from "@/components/marketing/CtaBand";
 
 export const metadata: Metadata = {
-  title: 'About Clinical Trials – Phases, Types, Safety, and Costs',
-  description: 'Understand how clinical trials work, their phases and types, safety oversight, and typical costs/compensation.',
+  title: "About Clinical Trials - Phases, Types, Safety, and Costs",
+  description:
+    "Understand how clinical trials work, their phases and types, safety oversight, and typical costs or compensation.",
   openGraph: {
-    title: 'About Clinical Trials – Phases, Types, Safety, and Costs',
-    description: 'Understand how clinical trials work, their phases and types, safety oversight, and typical costs/compensation.',
-    type: 'website',
+    title: "About Clinical Trials - Phases, Types, Safety, and Costs",
+    description:
+      "Understand how clinical trials work, their phases and types, safety oversight, and typical costs or compensation.",
+    type: "website",
   },
 };
 
-const tableOfContents = [
-  { id: 'what-is', label: 'What is a trial' },
-  { id: 'phases', label: 'Phases' },
-  { id: 'types', label: 'Types' },
-  { id: 'safety', label: 'Safety & oversight' },
-  { id: 'costs', label: 'Costs & compensation' },
-  { id: 'why', label: 'Why participate' },
-  { id: 'faq', label: 'FAQs' },
-  { id: 'glossary', label: 'Glossary' },
-];
-
-const phases: PhaseNode[] = [
+const phases = [
   {
-    badge: 'Phase 1',
-    purpose: 'Safety & dose in first human studies',
-    participants: '~20–100 people',
+    number: "1",
+    label: "Phase 1",
+    color: "#D97706",
+    purpose: "Early safety and dose finding.",
+    participants: "Often 20 to 100 people.",
   },
   {
-    badge: 'Phase 2',
-    purpose: 'Does the treatment work for this condition?',
-    participants: '~100–300 people',
+    number: "2",
+    label: "Phase 2",
+    color: "#0369A1",
+    purpose: "Tests whether the approach appears to work for a condition.",
+    participants: "Often 100 to 300 people.",
   },
   {
-    badge: 'Phase 3',
-    purpose: 'Compare to standard care before approval',
-    participants: '~1,000–3,000 people',
+    number: "3",
+    label: "Phase 3",
+    color: "#7C3AED",
+    purpose: "Compares the treatment with standard care or another control before approval.",
+    participants: "Often hundreds to thousands of people.",
   },
   {
-    badge: 'Phase 4',
-    purpose: 'Real-world safety after approval',
-    participants: 'Hundreds to thousands',
+    number: "4",
+    label: "Phase 4",
+    color: "#2D9B70",
+    purpose: "Tracks safety and use after a treatment is approved.",
+    participants: "Often hundreds to thousands of people.",
   },
 ];
 
-const typeTiles: TypeTile[] = [
+const sections = [
   {
-    name: 'Interventional trials',
-    summary: 'Participants receive a study treatment, procedure, or program and outcomes are measured.',
-    examples: ['Drug', 'Device', 'Lifestyle'],
-    icon: <Pill className="h-6 w-6 text-primary" aria-hidden="true" />,
+    eyebrow: "What trials are",
+    title: "A structured way to answer a medical question.",
+    rows: [
+      "Clinical trials test ways to prevent, detect, treat, or manage disease.",
+      "Every trial follows a written plan that explains who can join, what happens, and what outcomes are measured.",
+      "Some trials test a medication or device. Others observe health over time without changing usual care.",
+    ],
   },
   {
-    name: 'Observational studies',
-    summary: 'Researchers collect health information but do not assign a treatment.',
-    examples: ['Survey', 'Registry', 'Follow-up'],
-    icon: <ClipboardCheck className="h-6 w-6 text-primary" aria-hidden="true" />,
-  },
-];
-
-const safetyItems: SafetyItem[] = [
-  {
-    lead: 'Independent review —',
-    body: 'IRBs approve and monitor trials.',
-    icon: <ShieldCheck className="h-5 w-5 text-primary" aria-hidden="true" />,
+    eyebrow: "Study types",
+    title: "Not every study asks participants to take a treatment.",
+    rows: [
+      "Interventional trials assign a study treatment, procedure, device, or program.",
+      "Observational studies collect health information but do not assign a treatment.",
+      "Remote and hybrid studies may reduce travel, but many still require some in-person visits.",
+    ],
   },
   {
-    lead: 'Informed consent —',
-    body: 'Risks, benefits, and alternatives explained clearly.',
-    icon: <ClipboardList className="h-5 w-5 text-primary" aria-hidden="true" />,
+    eyebrow: "Safety",
+    title: "Oversight is built into the process.",
+    rows: [
+      "Independent review boards evaluate the study plan before enrollment begins.",
+      "Informed consent explains risks, benefits, alternatives, and participant rights.",
+      "Safety is monitored throughout the study, and participants can leave at any time.",
+    ],
   },
   {
-    lead: 'Continuous monitoring —',
-    body: 'Safety is reviewed throughout the study.',
-    icon: <Activity className="h-5 w-5 text-primary" aria-hidden="true" />,
+    eyebrow: "Costs",
+    title: "Ask what is covered before enrolling.",
+    rows: [
+      "Study treatments and research-only procedures are often covered by the sponsor.",
+      "Routine care may still be billed to insurance depending on the study and your plan.",
+      "Some studies offer travel reimbursement or compensation, but policies vary.",
+    ],
   },
   {
-    lead: 'Right to withdraw —',
-    body: 'You can stop at any time without penalty.',
-    icon: <Compass className="h-5 w-5 text-primary" aria-hidden="true" />,
-  },
-];
-
-const costItems: CostItem[] = [
-  {
-    headline: 'Study treatment cost',
-    body: 'Typically $0 for participants.',
-    icon: <Pill className="h-6 w-6 text-primary" aria-hidden="true" />,
-  },
-  {
-    headline: 'Research costs',
-    body: 'Often covered by the sponsor.',
-    icon: <ClipboardList className="h-6 w-6 text-primary" aria-hidden="true" />,
-  },
-  {
-    headline: 'Travel support',
-    body: 'May be available for visits.',
-    icon: <Map className="h-6 w-6 text-primary" aria-hidden="true" />,
-  },
-  {
-    headline: 'Routine care',
-    body: 'May be billed to insurance—ask what’s covered.',
-    icon: <DollarSign className="h-6 w-6 text-primary" aria-hidden="true" />,
+    eyebrow: "Why participate",
+    title: "The right reason is personal and specific.",
+    rows: [
+      "Some people want access to options that are not widely available yet.",
+      "Some value closer monitoring from a team focused on their condition.",
+      "Some participate to help future patients, even when direct benefit is uncertain.",
+    ],
   },
 ];
 
-const whyItems: WhyItem[] = [
+const faqs = [
   {
-    headline: 'Access to new options',
-    body: 'Sometimes available before wider release.',
-    icon: <Sparkles className="h-7 w-7 text-primary" aria-hidden="true" />,
-  },
-  {
-    headline: 'Experienced teams',
-    body: 'Care from specialists in your condition.',
-    icon: <UserRound className="h-7 w-7 text-primary" aria-hidden="true" />,
-  },
-  {
-    headline: 'Extra monitoring',
-    body: 'Structured follow-up and support.',
-    icon: <Activity className="h-7 w-7 text-primary" aria-hidden="true" />,
-  },
-  {
-    headline: 'Helps future patients',
-    body: 'Contribute to research and better care.',
-    icon: <HeartHandshake className="h-7 w-7 text-primary" aria-hidden="true" />,
-  },
-];
-
-const faqs: FaqItem[] = [
-  {
-    question: 'Will I get a placebo instead of real treatment?',
+    question: "Will I get a placebo instead of real treatment?",
     answer:
-      'Some trials use a placebo to compare results. You’ll be told if a placebo is possible and what that means for your care before you decide.',
+      "Some trials use a placebo to compare results. You should be told if a placebo is possible before you decide.",
   },
   {
-    question: 'Can I leave a trial if I change my mind?',
+    question: "Can I leave a trial if I change my mind?",
     answer:
-      'Yes. Participation is voluntary. You can stop at any time without losing access to your usual medical care.',
+      "Yes. Participation is voluntary. You can stop at any time without losing access to your usual medical care.",
   },
   {
-    question: 'Will it cost me anything?',
+    question: "Will it cost me anything?",
     answer:
-      'Study treatments are not billed to participants. Many research-related costs are covered. Ask the study team about coverage, travel support, and any compensation.',
+      "Study-related costs are often covered, but routine care may be handled differently. Ask the study team what is covered.",
   },
   {
-    question: 'How is my safety protected?',
+    question: "How is my safety protected?",
     answer:
-      'Trials are reviewed by independent ethics boards. You’ll sign an informed consent form that explains risks and benefits, and your health is monitored throughout the study.',
-  },
-  {
-    question: 'What happens if I qualify?',
-    answer:
-      'You’ll complete consent, then a screening visit or call. If eligibility is confirmed, the team will schedule your first study visit and explain the timeline.',
-  },
-  {
-    question: 'Do trials offer remote or telehealth visits?',
-    answer:
-      'Many do. Some studies are fully remote; others are hybrid with occasional clinic visits. The study team will outline what to expect.',
+      "Trials are reviewed by independent ethics boards, use informed consent, and include safety monitoring during the study.",
   },
 ];
 
-const glossary: GlossaryItem[] = [
+const glossary = [
   {
-    term: 'Informed consent',
-    definition: 'A document you review and sign that explains the study, risks, benefits, and your rights.',
+    term: "Informed consent",
+    definition: "The process and document that explain the study, risks, benefits, alternatives, and rights.",
   },
   {
-    term: 'Placebo',
-    definition: 'A treatment that looks the same as the study option but has no active ingredient.',
+    term: "Placebo",
+    definition: "A comparison treatment that looks like the study option but has no active ingredient.",
   },
   {
-    term: 'Randomized',
-    definition: 'Participants are assigned to study groups by chance rather than by choice.',
+    term: "Randomized",
+    definition: "Participants are assigned to study groups by chance rather than by choice.",
   },
   {
-    term: 'Control group',
-    definition: 'Participants who receive standard care or placebo for comparison.',
+    term: "Control group",
+    definition: "A group used for comparison, often receiving standard care or placebo.",
   },
   {
-    term: 'Eligibility criteria',
-    definition: 'Health factors that determine who can join the study.',
+    term: "Eligibility criteria",
+    definition: "Health, history, lab, or logistics factors that determine who can join.",
   },
 ];
+
+function CheckRows({ rows }: { rows: string[] }) {
+  return (
+    <div className="divide-y divide-border/40">
+      {rows.map((row) => (
+        <div key={row} className="grid grid-cols-[20px_1fr] gap-4 py-4">
+          <span className="pt-0.5 text-[15px] font-semibold text-primary" aria-hidden="true">
+            ✓
+          </span>
+          <p className="text-[15.5px] leading-relaxed text-muted-foreground">{row}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function AboutClinicalTrialsPage() {
   return (
-    <main className="relative">
-      <div className="pm-container py-16 md:py-20">
-        <div className="space-y-16">
-          <MotionSection id="what-is" className="space-y-6">
-            <h1 className="text-[34px] font-semibold leading-tight text-foreground md:text-4xl">
-              What you should know about clinical trials
+    <main className="bg-background">
+      <section className="bg-white py-16 md:py-24">
+        <div className="pm-container">
+          <div className="max-w-3xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+              Clinical trials
+            </p>
+            <h1
+              className="mt-5 font-display font-normal leading-[1.08] tracking-[-0.022em] text-foreground"
+              style={{ fontSize: "clamp(36px, 4.2vw, 56px)" }}
+            >
+              A plain-English guide to joining research{" "}
+              <em className="italic text-primary">with confidence.</em>
             </h1>
-            <p className="text-sm font-medium text-muted-foreground md:text-base">
-              A plain-English guide to help you decide confidently.
+            <p className="mt-6 max-w-2xl text-[17px] leading-relaxed text-muted-foreground md:text-[17.5px]">
+              Clinical trials help researchers learn whether a new approach is safe, effective, and
+              worth using more broadly. This guide explains the basics before you start comparing
+              studies.
             </p>
-            <div className="space-y-4 text-base text-muted-foreground md:text-lg">
-              <p>
-                Clinical trials are research studies that test new ways to prevent, detect, or treat disease. They help
-                doctors learn whether a new approach is safe and effective.
-              </p>
-              <p>
-                Every trial follows a detailed plan, is reviewed by independent experts, and includes steps to protect
-                participants’ rights and safety.
-              </p>
-            </div>
-            <div className="space-y-3">
-              <h2 className="text-2xl font-semibold text-foreground md:text-[28px]">What is a clinical trial?</h2>
-              <p className="text-sm leading-relaxed text-muted-foreground md:text-base">
-                Trials answer specific questions about a treatment, device, or care approach. Some involve taking a
-                study medication or using a device; others observe health over time without changing your usual care.
-              </p>
-            </div>
-          </MotionSection>
-
-          <MotionSection id="phases" className="space-y-8">
-            <h2 className="text-2xl font-semibold text-foreground md:text-[28px]">Phases timeline</h2>
-            <ol className="relative flex flex-col gap-8 border-l border-border/60 pl-6 md:flex-row md:items-start md:gap-6 md:border-l-0 md:pl-0 md:pt-6 md:before:absolute md:before:left-10 md:before:right-10 md:before:top-10 md:before:h-px md:before:bg-border/60 md:before:content-['']">
-              {phases.map((phase) => (
-                <li key={phase.badge} className="relative flex flex-col gap-4 md:flex-1 md:gap-5">
-                  <div className="flex items-start gap-4 md:flex-col md:items-start md:gap-3">
-                    <span className="relative inline-flex h-12 w-12 items-center justify-center rounded-lg border border-border/70 bg-background">
-                      <span
-                        className="pointer-events-none absolute inset-[-6px] rounded-lg border border-primary/30 motion-safe:animate-[pulse_4s_ease-in-out_infinite] motion-reduce:animate-none"
-                        aria-hidden="true"
-                      />
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-primary">
-                        {phase.badge}
-                      </span>
-                    </span>
-                    <div className="space-y-1 md:text-center md:space-y-2">
-                      <p className="text-sm font-semibold text-foreground md:text-base">{phase.purpose}</p>
-                      <p className="text-xs font-medium text-muted-foreground/80 md:text-sm">
-                        {phase.participants}
-                      </p>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </MotionSection>
-
-          <MotionSection id="types" className="space-y-8">
-            <h2 className="text-2xl font-semibold text-foreground md:text-[28px]">Types of studies</h2>
-            <div className="grid gap-6 md:grid-cols-2">
-              {typeTiles.map((tile) => (
-                <article
-                  key={tile.name}
-                  className="flex flex-col gap-4 rounded-lg border border-border/60 bg-background/70 p-6 shadow-sm/5"
-                >
-                  <div className="flex items-center gap-3">
-                    {tile.icon}
-                    <h3 className="text-lg font-semibold text-foreground">{tile.name}</h3>
-                  </div>
-                  <p className="text-sm leading-relaxed text-muted-foreground md:text-base">{tile.summary}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {tile.examples.map((example) => (
-                      <span
-                        key={example}
-                        className="inline-flex items-center rounded-lg border border-border/60 bg-muted/40 px-3 py-1 text-xs font-medium text-muted-foreground"
-                      >
-                        {example}
-                      </span>
-                    ))}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </MotionSection>
-
-          <MotionSection id="safety" className="space-y-6">
-            <h2 className="text-2xl font-semibold text-foreground md:text-[28px]">Safety &amp; oversight</h2>
-            <ul className="grid gap-4 md:grid-cols-2">
-              {safetyItems.map((item) => (
-                <li
-                  key={item.lead}
-                  className="flex items-start gap-3 rounded-lg border border-border/50 bg-muted/30 p-5 text-sm leading-relaxed text-muted-foreground md:text-base"
-                >
-                  {item.icon}
-                  <span>
-                    <strong className="font-semibold text-foreground">{item.lead}</strong> {item.body}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </MotionSection>
-
-          <MotionSection id="costs" className="space-y-6">
-            <h2 className="text-2xl font-semibold text-foreground md:text-[28px]">Costs &amp; compensation</h2>
-            <div className="grid gap-4 md:grid-cols-2">
-              {costItems.map((item) => (
-                <article
-                  key={item.headline}
-                  className="flex items-start gap-4 rounded-lg border border-border/50 bg-background/70 p-5 text-sm leading-relaxed text-muted-foreground md:text-base"
-                >
-                  {item.icon}
-                  <div>
-                    <p className="text-base font-semibold text-foreground md:text-lg">{item.headline}</p>
-                    <p className="text-sm text-muted-foreground md:text-base">{item.body}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </MotionSection>
-
-          <MotionSection id="why" className="space-y-6">
-            <h2 className="text-2xl font-semibold text-foreground md:text-[28px]">Why participate?</h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {whyItems.map((item) => (
-                <div
-                  key={item.headline}
-                  className="flex items-start gap-4 rounded-lg border border-border/50 bg-muted/30 p-5"
-                >
-                  {item.icon}
-                  <div className="space-y-1 text-sm text-muted-foreground md:text-base">
-                    <p className="font-semibold text-foreground">{item.headline}</p>
-                    <p>{item.body}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </MotionSection>
-
-          <MotionSection id="faq" className="space-y-6">
-            <h2 className="text-2xl font-semibold text-foreground md:text-[28px]">Frequently asked questions</h2>
-            <div className="divide-y divide-border overflow-hidden rounded-lg border border-border/60 bg-background/70">
-              {faqs.map((faq, index) => (
-                <details key={faq.question} className="group border-b border-border/60 last:border-b-0">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-left text-sm font-semibold text-foreground transition hover:text-primary md:text-base">
-                    {faq.question}
-                    <span className="text-lg text-muted-foreground group-open:rotate-180" aria-hidden="true">
-                      ▾
-                    </span>
-                  </summary>
-                  <div className="px-5 pb-5 text-sm leading-relaxed text-muted-foreground md:text-base">
-                    {faq.answer}
-                  </div>
-                </details>
-              ))}
-            </div>
-          </MotionSection>
-
-          <MotionSection id="glossary" className="space-y-4 border-t border-border/50 pt-8">
-            <h2 className="text-2xl font-semibold text-foreground md:text-[28px]">Glossary</h2>
-            <p className="text-sm text-muted-foreground md:text-base">
-              Tap or hover to see quick definitions for common terms.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              {glossary.map((item) => (
-                <abbr
-                  key={item.term}
-                  title={item.definition}
-                  className="inline-flex cursor-help items-center rounded-lg border border-border/60 bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground"
-                >
-                  {item.term}
-                </abbr>
-              ))}
-            </div>
-          </MotionSection>
+          </div>
         </div>
-      </div>
-      <SectionDivider />
+      </section>
+
+      <section className="bg-[#E8EDE6] py-24">
+        <div className="pm-container grid gap-12 md:grid-cols-[5fr_7fr] md:gap-20">
+          <div className="md:sticky md:top-24 md:self-start">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+              Trial phases
+            </p>
+            <h2
+              className="mt-4 font-display font-normal leading-[1.14] tracking-[-0.015em] text-foreground"
+              style={{ fontSize: "clamp(26px, 3vw, 40px)" }}
+            >
+              Each phase answers a different question.
+            </h2>
+          </div>
+          <div className="divide-y divide-border/40">
+            {phases.map((phase) => (
+              <article key={phase.label} className="grid gap-4 py-8 first:pt-0 md:grid-cols-[112px_1fr]">
+                <div
+                  className="font-display font-light leading-none tracking-[-0.05em]"
+                  style={{ fontSize: "76px", color: `${phase.color}38` }}
+                  aria-hidden="true"
+                >
+                  {phase.number}
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: phase.color }}>
+                    {phase.label}
+                  </p>
+                  <h3 className="mt-2 text-[19px] font-semibold text-foreground">{phase.purpose}</h3>
+                  <p className="mt-2 text-[15.5px] leading-relaxed text-muted-foreground">
+                    {phase.participants}
+                  </p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {sections.map((section, index) => (
+        <section key={section.eyebrow} className={index % 2 === 0 ? "bg-white py-24" : "bg-[#E8EDE6] py-24"}>
+          <div className="pm-container grid gap-12 md:grid-cols-[5fr_7fr] md:gap-20">
+            <div className="md:sticky md:top-24 md:self-start">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+                {section.eyebrow}
+              </p>
+              <h2
+                className="mt-4 font-display font-normal leading-[1.14] tracking-[-0.015em] text-foreground"
+                style={{ fontSize: "clamp(26px, 3vw, 40px)" }}
+              >
+                {section.title}
+              </h2>
+            </div>
+            <CheckRows rows={section.rows} />
+          </div>
+        </section>
+      ))}
+
+      <section className="bg-[#E8EDE6] py-24">
+        <div className="pm-container grid gap-12 md:grid-cols-[5fr_7fr] md:gap-20">
+          <div className="md:sticky md:top-24 md:self-start">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+              FAQs
+            </p>
+            <h2
+              className="mt-4 font-display font-normal leading-[1.14] tracking-[-0.015em] text-foreground"
+              style={{ fontSize: "clamp(26px, 3vw, 40px)" }}
+            >
+              Common questions before enrollment.
+            </h2>
+          </div>
+          <div className="divide-y divide-border/40">
+            {faqs.map((faq) => (
+              <details key={faq.question} className="group py-5 first:pt-0">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-semibold text-foreground transition hover:text-primary">
+                  {faq.question}
+                  <span className="text-primary" aria-hidden="true">
+                    <span className="group-open:hidden">+</span>
+                    <span className="hidden group-open:inline">-</span>
+                  </span>
+                </summary>
+                <p className="mt-3 max-w-2xl text-[15.5px] leading-relaxed text-muted-foreground">
+                  {faq.answer}
+                </p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-white py-24">
+        <div className="pm-container grid gap-12 md:grid-cols-[5fr_7fr] md:gap-20">
+          <div className="md:sticky md:top-24 md:self-start">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+              Glossary
+            </p>
+            <h2
+              className="mt-4 font-display font-normal leading-[1.14] tracking-[-0.015em] text-foreground"
+              style={{ fontSize: "clamp(26px, 3vw, 40px)" }}
+            >
+              Terms you will see often.
+            </h2>
+          </div>
+          <dl className="divide-y divide-border/40">
+            {glossary.map((item) => (
+              <div key={item.term} className="grid gap-2 py-5 first:pt-0 md:grid-cols-[190px_1fr] md:gap-8">
+                <dt className="text-[15px] font-semibold text-foreground">{item.term}</dt>
+                <dd className="text-[15.5px] leading-relaxed text-muted-foreground">{item.definition}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
       <CtaBand
-        eyebrow={undefined}
         title="Ready to explore your options?"
-        description="Find clinical trials that match your health condition and preferences—no personal information required to start."
+        description="Find clinical trials that match your health condition and preferences without sharing personal information to start."
         primaryLabel="Find clinical trials"
         primaryHref="/trials"
         secondaryLabel={undefined}
         secondaryHref={undefined}
       />
-    </main >
+    </main>
   );
 }

@@ -156,3 +156,44 @@ test("PMQ numeric range inclusion is evaluated from min and max params", () => {
   assert.equal(evaluatePmq(pmq, { bmi: 17 }).unmet_details[0]?.id, "bmi");
   assert.notEqual(evaluatePmq(pmq, { bmi: 24 }).result, "no");
 });
+
+test("PMQ caregiver perspective keeps subject pronouns grammatical", () => {
+  const ui = pmqToUiQuestions(
+    {
+      questions: [
+        {
+          question_key: "age_years",
+          text: "How old are you?",
+          answer_type: "number",
+        },
+        {
+          question_key: "pregnant",
+          text: "Are you currently pregnant?",
+          answer_type: "single_select",
+          options: ["Yes", "No", "Not sure"],
+        },
+        {
+          question_key: "prior_treatment",
+          text: "Have you received treatment explained to you by a doctor?",
+          answer_type: "single_select",
+          options: ["Yes", "No", "Not sure"],
+        },
+        {
+          question_key: "contraception",
+          text: "If you could become pregnant, would you use birth control during the study?",
+          answer_type: "single_select",
+          options: ["Yes", "No", "Not applicable", "Not sure"],
+        },
+      ],
+    },
+    null,
+    "other",
+  );
+
+  const labels = ui.mainQuestions.map((question) => question.label);
+  assert.equal(labels.includes("How old are they?"), true);
+  assert.equal(labels.includes("Are they currently pregnant?"), true);
+  assert.equal(labels.includes("Have they received treatment explained to them by a doctor?"), true);
+  assert.equal(labels.includes("If they could become pregnant, would they use birth control during the study?"), true);
+  assert.equal(labels.some((label) => /\b(are|do|does|have|can|could|will|would|should)\s+them\b/i.test(label)), false);
+});

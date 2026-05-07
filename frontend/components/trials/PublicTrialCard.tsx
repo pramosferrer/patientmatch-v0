@@ -166,81 +166,133 @@ function RowCard({ trial }: { trial: PublicTrial }) {
     <motion.article
       whileHover={prefersReducedMotion ? {} : { backgroundColor: "rgba(0,0,0,0.012)" }}
       transition={{ duration: 0.12 }}
-      className="group flex items-start gap-4 border-b border-border/25 py-4 last:border-0"
+      className="group border-b border-border/25 py-4 last:border-0"
     >
-      {/* Distance column */}
-      <div className="w-14 shrink-0 flex flex-col items-center justify-center pt-0.5">
-        {distStr != null ? (
-          <>
-            <span className="text-[22px] font-bold tabular-nums leading-none text-distance">
-              {distStr}
+      <div className="flex items-start gap-4">
+        {/* Distance column */}
+        <div className="w-14 shrink-0 flex flex-col items-center justify-center pt-0.5">
+          {distStr != null ? (
+            <>
+              <span className="text-[22px] font-bold tabular-nums leading-none text-distance">
+                {distStr}
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-distance/60 mt-0.5">
+                mi
+              </span>
+            </>
+          ) : (
+            <span className="text-[11px] font-medium text-muted-foreground/50 text-center leading-tight">
+              Nationwide
             </span>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-distance/60 mt-0.5">
-              mi
+          )}
+        </div>
+
+        {/* Content column */}
+        <div className="flex-1 min-w-0">
+          {/* Title */}
+          <Link href={detailHref} className="block group/title">
+            <h3 className="text-[14.5px] font-semibold leading-snug text-foreground transition-colors group-hover/title:text-primary">
+              {displayTitle}
+            </h3>
+          </Link>
+
+          {/* Facility / location */}
+          {facility && (
+            <p className="mt-1 text-[12.5px] text-muted-foreground truncate">
+              {facility}
+              {trial.sponsor && trial.sponsor !== facility && (
+                <span className="text-muted-foreground/50"> · {trial.sponsor}</span>
+              )}
+            </p>
+          )}
+          {!facility && trial.sponsor && (
+            <p className="mt-1 text-[12.5px] text-muted-foreground truncate">{trial.sponsor}</p>
+          )}
+
+          {/* Trial metadata row */}
+          {(() => {
+            const intervention = getIntervention(trial.intervention_mode_primary);
+            const phase = formatPhase(trial.phase);
+            const duration = formatDuration(trial.study_duration_days);
+            const parts: React.ReactNode[] = [];
+            if (intervention) parts.push(
+              <span key="intv" className="font-medium text-foreground/55">{intervention}</span>
+            );
+            if (phase) parts.push(<span key="ph">{phase}</span>);
+            if (duration) parts.push(<span key="dur">{duration}</span>);
+            if (sites) parts.push(
+              <span key="sites" className="flex items-center gap-1">
+                <MapPin size={10} className="shrink-0" />{sites}
+              </span>
+            );
+            if (parts.length === 0) return null;
+            return (
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-muted-foreground/50">
+                {parts.map((p, i) => (
+                  <span key={i} className="flex items-center gap-2">
+                    {i > 0 && <span className="text-border select-none">·</span>}
+                    {p}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Right column: status + meta + CTA — desktop only */}
+        <div className="hidden sm:flex w-40 shrink-0 flex-col items-end gap-2">
+          {/* Status */}
+          <div className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-[7px] w-[7px] rounded-full shrink-0"
+              style={{ background: status.dotColor }}
+            />
+            <span className={cn("text-[11.5px] font-semibold", status.textColor)}>
+              {status.label}
             </span>
-          </>
-        ) : (
-          <span className="text-[11px] font-medium text-muted-foreground/50 text-center leading-tight">
-            Nationwide
-          </span>
-        )}
-      </div>
+          </div>
 
-      {/* Content column */}
-      <div className="flex-1 min-w-0">
-        {/* Title */}
-        <Link href={detailHref} className="block group/title">
-          <h3 className="text-[14.5px] font-semibold leading-snug line-clamp-2 text-foreground transition-colors group-hover/title:text-primary">
-            {displayTitle}
-          </h3>
-        </Link>
-
-        {/* Facility / location */}
-        {facility && (
-          <p className="mt-1 text-[12.5px] text-muted-foreground truncate">
-            {facility}
-            {trial.sponsor && trial.sponsor !== facility && (
-              <span className="text-muted-foreground/50"> · {trial.sponsor}</span>
-            )}
-          </p>
-        )}
-        {!facility && trial.sponsor && (
-          <p className="mt-1 text-[12.5px] text-muted-foreground truncate">{trial.sponsor}</p>
-        )}
-
-        {/* Trial metadata row */}
-        {(() => {
-          const intervention = getIntervention(trial.intervention_mode_primary);
-          const phase = formatPhase(trial.phase);
-          const duration = formatDuration(trial.study_duration_days);
-          const parts: React.ReactNode[] = [];
-          if (intervention) parts.push(
-            <span key="intv" className="font-medium text-foreground/55">{intervention}</span>
-          );
-          if (phase) parts.push(<span key="ph">{phase}</span>);
-          if (duration) parts.push(<span key="dur">{duration}</span>);
-          if (sites) parts.push(
-            <span key="sites" className="flex items-center gap-1">
-              <MapPin size={10} className="shrink-0" />{sites}
-            </span>
-          );
-          if (parts.length === 0) return null;
-          return (
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-muted-foreground/50">
-              {parts.map((p, i) => (
-                <span key={i} className="flex items-center gap-2">
-                  {i > 0 && <span className="text-border select-none">·</span>}
-                  {p}
+          {/* Effort meta */}
+          {(qCount || minutes) && (
+            <div className="flex items-center gap-2 text-[11.5px] text-muted-foreground/70">
+              {qCount && (
+                <span className="flex items-center gap-1">
+                  <FileText size={10} />
+                  {qCount}q
                 </span>
-              ))}
+              )}
+              {minutes && (
+                <span className="flex items-center gap-1">
+                  <Clock size={10} />
+                  ~{minutes}min
+                </span>
+              )}
             </div>
-          );
-        })()}
+          )}
+
+          {/* CTA */}
+          {isScreenable ? (
+            <Button variant="brand" size="sm" className="h-7 px-3 text-[12px] font-semibold w-full" asChild>
+              <Link href={screenerLink}>Check if I qualify</Link>
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" className="h-7 px-3 text-[12px] font-semibold w-full" asChild>
+              <Link href={detailHref}>View study</Link>
+            </Button>
+          )}
+
+          <Link
+            href={detailHref}
+            className="text-[11.5px] font-medium text-muted-foreground/60 hover:text-primary transition-colors flex items-center gap-0.5"
+          >
+            View study
+            <ExternalLink size={9} className="opacity-60" />
+          </Link>
+        </div>
       </div>
 
-      {/* Right column: status + meta + CTA */}
-      <div className="w-40 shrink-0 flex flex-col items-end gap-2">
-        {/* Status */}
+      {/* Mobile-only bottom row: status badge + CTA */}
+      <div className="mt-3 flex items-center justify-between gap-3 sm:hidden pl-[4.5rem]">
         <div className="flex items-center gap-1.5">
           <span
             className="inline-block h-[7px] w-[7px] rounded-full shrink-0"
@@ -250,43 +302,15 @@ function RowCard({ trial }: { trial: PublicTrial }) {
             {status.label}
           </span>
         </div>
-
-        {/* Effort meta */}
-        {(qCount || minutes) && (
-          <div className="flex items-center gap-2 text-[11.5px] text-muted-foreground/70">
-            {qCount && (
-              <span className="flex items-center gap-1">
-                <FileText size={10} />
-                {qCount}q
-              </span>
-            )}
-            {minutes && (
-              <span className="flex items-center gap-1">
-                <Clock size={10} />
-                ~{minutes}min
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* CTA */}
         {isScreenable ? (
-          <Button variant="brand" size="sm" className="h-7 px-3 text-[12px] font-semibold w-full" asChild>
+          <Button variant="brand" size="sm" className="h-7 shrink-0 px-3 text-[12px] font-semibold" asChild>
             <Link href={screenerLink}>Check if I qualify</Link>
           </Button>
         ) : (
-          <Button variant="outline" size="sm" className="h-7 px-3 text-[12px] font-semibold w-full" asChild>
+          <Button variant="outline" size="sm" className="h-7 shrink-0 px-3 text-[12px] font-semibold" asChild>
             <Link href={detailHref}>View study</Link>
           </Button>
         )}
-
-        <Link
-          href={detailHref}
-          className="text-[11.5px] font-medium text-muted-foreground/60 hover:text-primary transition-colors flex items-center gap-0.5"
-        >
-          View study
-          <ExternalLink size={9} className="opacity-60" />
-        </Link>
       </div>
     </motion.article>
   );
