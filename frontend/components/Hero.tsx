@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -73,7 +73,7 @@ function ConditionList() {
         href="/conditions"
         className="mt-4 flex items-center gap-2 text-[13.5px] font-semibold text-primary no-underline hover:opacity-75 transition-opacity"
       >
-        View all 400+ conditions →
+        View all conditions →
       </Link>
     </div>
   );
@@ -81,9 +81,32 @@ function ConditionList() {
 
 export default function Hero() {
   const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const [condition, setCondition] = useState("");
   const [zip, setZip] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  const prefetchedTrialsHref = useMemo(() => {
+    const trimmedCondition = condition.trim();
+    const normalizedZip = zip.trim().slice(0, 5);
+    if (!trimmedCondition || !/^\d{5}$/.test(normalizedZip)) return null;
+
+    const params = new URLSearchParams({
+      condition: trimmedCondition,
+      zip: normalizedZip,
+    });
+    return `/trials?${params.toString()}`;
+  }, [condition, zip]);
+
+  useEffect(() => {
+    if (!prefetchedTrialsHref) return;
+
+    const timer = window.setTimeout(() => {
+      router.prefetch(prefetchedTrialsHref);
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [prefetchedTrialsHref, router]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -111,7 +134,9 @@ export default function Hero() {
 
     const params = new URLSearchParams({ condition: trimmedCondition });
     if (normalizedZip) params.set("zip", normalizedZip);
-    router.push(`/trials?${params.toString()}`);
+    startTransition(() => {
+      router.push(`/trials?${params.toString()}`);
+    });
   };
 
   return (
@@ -183,11 +208,17 @@ export default function Hero() {
 
                 <Button
                   type="submit"
+                  disabled={isPending}
                   className="h-[46px] rounded-[11px] bg-primary px-5 text-[14.5px] font-semibold text-white hover:bg-primary-strong active:scale-[0.99] transition-all whitespace-nowrap sm:shrink-0"
                 >
-                  See matches
+                  {isPending ? "Finding trials..." : "See matches"}
                 </Button>
               </div>
+              {isPending && (
+                <div className="mt-2 h-1 overflow-hidden rounded-full bg-primary/10">
+                  <div className="h-full w-1/3 animate-[loading-bar_1.15s_ease-in-out_infinite] rounded-full bg-primary" />
+                </div>
+              )}
 
               {error && (
                 <p className="absolute top-[calc(100%+0.5rem)] left-0 px-1 text-sm font-medium text-destructive animate-in fade-in slide-in-from-top-1">

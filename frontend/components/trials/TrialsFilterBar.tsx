@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, ChevronDown, X, SlidersHorizontal, Check, MapPin, List, Map } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -79,6 +79,7 @@ export default function TrialsFilterBar({
 }: TrialsFilterBarProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
   // ── Read URL state ──────────────────────────────────────────────────────────
   const condition    = searchParams.get('condition') || '';
@@ -136,6 +137,7 @@ export default function TrialsFilterBar({
   // Fetch condition suggestions as the user types. The old behavior fetched only
   // the default top conditions, then filtered that stale subset client-side.
   useEffect(() => {
+    if (!conditionOpen) return;
     const controller = new AbortController();
     fetch(`/api/conditions/suggestions?query=${encodeURIComponent(debouncedConditionQuery)}`, {
       signal: controller.signal,
@@ -148,7 +150,7 @@ export default function TrialsFilterBar({
         if (error?.name !== 'AbortError') setAllConditions([]);
       });
     return () => controller.abort();
-  }, [debouncedConditionQuery]);
+  }, [conditionOpen, debouncedConditionQuery]);
 
   // ── Navigation helper ───────────────────────────────────────────────────────
   const navigate = useCallback(
@@ -159,7 +161,9 @@ export default function TrialsFilterBar({
         else params.set(k, v);
       }
       params.delete('page');
-      router.push(`/trials?${params.toString()}`);
+      startTransition(() => {
+        router.push(`/trials?${params.toString()}`);
+      });
     },
     [searchParams, router],
   );
@@ -271,7 +275,9 @@ export default function TrialsFilterBar({
     setLocalSex('');
     setLocalPhases([]);
     setLocalStatuses([]);
-    router.push('/trials');
+    startTransition(() => {
+      router.push('/trials');
+    });
     updateProfileBatch({ conditions: [], zip: undefined, radius: undefined, age: undefined, sex: null, saved_phases: null, saved_status_buckets: null }).catch(() => {});
   };
 
@@ -293,6 +299,11 @@ export default function TrialsFilterBar({
 
   return (
     <div className="sticky top-16 z-30 border-b border-border/30 bg-background/97 backdrop-blur-md">
+      {isPending && (
+        <div className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-primary/10">
+          <div className="h-full w-1/3 animate-[loading-bar_1.15s_ease-in-out_infinite] bg-primary" />
+        </div>
+      )}
       <div className="pm-container">
         {/* ── Primary filter row ─────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2 py-3">
@@ -304,12 +315,14 @@ export default function TrialsFilterBar({
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search trials, drugs…"
+              disabled={isPending}
               className="w-full rounded-full border border-border/50 bg-white py-[7px] pl-8.5 pr-8 text-[13.5px] text-foreground shadow-none outline-none transition-colors focus:border-primary/40 placeholder:text-muted-foreground/55"
               style={{ paddingLeft: '2rem' }}
             />
             {searchInput && (
               <button
                 onClick={() => { setSearchInput(''); navigate({ q: null }); }}
+                disabled={isPending}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground transition-colors"
               >
                 <X size={12} />
@@ -320,7 +333,7 @@ export default function TrialsFilterBar({
           {/* Condition */}
           <Popover open={conditionOpen} onOpenChange={setConditionOpen}>
             <PopoverTrigger asChild>
-              <button className={pill(!!condition)}>
+              <button className={pill(!!condition)} disabled={isPending}>
                 {conditionLabel}
                 <ChevronDown size={11} className="opacity-60" />
               </button>
@@ -390,8 +403,8 @@ export default function TrialsFilterBar({
                       maxLength={5}
                       className="h-9 flex-1 rounded-lg text-sm"
                     />
-                    <Button size="sm" variant="brand" onClick={applyLocation} className="h-9 px-4">
-                      Apply
+                    <Button size="sm" variant="brand" onClick={applyLocation} disabled={isPending} className="h-9 px-4">
+                      {isPending ? 'Applying...' : 'Apply'}
                     </Button>
                   </div>
                   {zipError && <p className="mt-1 text-xs text-destructive">{zipError}</p>}
@@ -432,6 +445,7 @@ export default function TrialsFilterBar({
           {statusBuckets.length === 0 && (
             <button
               onClick={() => navigate({ status_bucket: 'recruiting' })}
+              disabled={isPending}
               className={pill(false)}
             >
               Recruiting only
@@ -441,7 +455,7 @@ export default function TrialsFilterBar({
           {/* More filters */}
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
-              <button className={pill(moreCount > 0)}>
+              <button className={pill(moreCount > 0)} disabled={isPending}>
                 <SlidersHorizontal size={12} className="opacity-70" />
                 {moreCount > 0 ? `Filters · ${moreCount}` : 'More filters'}
                 <ChevronDown size={11} className="opacity-60" />
@@ -559,8 +573,8 @@ export default function TrialsFilterBar({
                 >
                   Clear
                 </button>
-                <Button size="sm" variant="brand" onClick={applyMore} className="h-8 px-5">
-                  Apply filters
+                <Button size="sm" variant="brand" onClick={applyMore} disabled={isPending} className="h-8 px-5">
+                  {isPending ? 'Applying...' : 'Apply filters'}
                 </Button>
               </div>
             </PopoverContent>
@@ -576,6 +590,7 @@ export default function TrialsFilterBar({
             <div className="flex items-center rounded-full border border-border/50 bg-white p-0.5">
               <button
                 onClick={() => navigate({ view: null })}
+                disabled={isPending}
                 className={cn(
                   'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12.5px] font-medium transition-colors',
                   view !== 'map'
@@ -588,6 +603,7 @@ export default function TrialsFilterBar({
               </button>
               <button
                 onClick={() => navigate({ view: 'map' })}
+                disabled={isPending}
                 className={cn(
                   'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12.5px] font-medium transition-colors',
                   view === 'map'
@@ -602,7 +618,7 @@ export default function TrialsFilterBar({
 
             <Popover open={sortOpen} onOpenChange={setSortOpen}>
               <PopoverTrigger asChild>
-                <button className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
+                <button disabled={isPending} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
                   {sortOptions.find((s) => s.id === activeSort)?.label ?? sortOptions[0].label}
                   <ChevronDown size={11} className="opacity-60" />
                 </button>

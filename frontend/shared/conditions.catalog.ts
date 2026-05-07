@@ -1,4 +1,3 @@
-import { unstable_cache } from 'next/cache';
 import { getServerSupabase } from '@/lib/supabaseServer';
 import { toConditionLabel, toConditionSlug } from './conditions-normalize';
 
@@ -28,6 +27,28 @@ export type CatalogOptions = {
   includeEmpty?: boolean;
   minCount?: number;
 };
+
+export type ConditionDirectoryQueryOptions = {
+  query?: string;
+  limit?: number;
+};
+
+type TrialConditionRow = {
+  nct_id: string | null;
+  conditions: unknown;
+  status_bucket: string | null;
+};
+
+type ConditionDirectoryRow = {
+  condition_slug: string | null;
+  condition_label: string | null;
+  recruiting_count: number | null;
+  updated_at: string | null;
+  source: 'seed' | 'db' | null;
+};
+
+const CONDITIONS_PAGE_SIZE = 1000;
+const DEFAULT_DIRECTORY_LIMIT = 300;
 
 // Curated seed list with labels and synonyms
 const SEED_CONDITIONS: Omit<ConditionItem, 'count' | 'source'>[] = [
@@ -196,6 +217,198 @@ function seedFilterValues(seed: Omit<ConditionItem, 'count' | 'source'>): string
   return Array.from(values).filter(Boolean);
 }
 
+const SEED_MAP = new Map(SEED_CONDITIONS.map((seed) => [seed.slug, seed]));
+
+function buildSeedAliasMap(): Map<string, string> {
+  const aliases = new Map<string, string>();
+  for (const seed of SEED_CONDITIONS) {
+    for (const value of seedFilterValues(seed)) {
+      const normalized = toConditionSlug(value);
+      if (normalized && normalized !== 'other') aliases.set(normalized, seed.slug);
+    }
+  }
+  return aliases;
+}
+
+async function fetchTrialConditionRows(supabase: ReturnType<typeof getServerSupabase>) {
+  const rows: TrialConditionRow[] = [];
+  for (let from = 0; ; from += CONDITIONS_PAGE_SIZE) {
+    const to = from + CONDITIONS_PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from('trials_serving_latest')
+      .select('nct_id, conditions, status_bucket')
+      .eq('status_bucket', 'Recruiting')
+      .range(from, to);
+
+    if (error) throw error;
+    const page = (data ?? []) as TrialConditionRow[];
+    rows.push(...page);
+    if (page.length < CONDITIONS_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+async function fetchConditionDirectoryRows(supabase: ReturnType<typeof getServerSupabase>) {
+  const rows: ConditionDirectoryRow[] = [];
+  for (let from = 0; ; from += CONDITIONS_PAGE_SIZE) {
+    const to = from + CONDITIONS_PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from('condition_directory_latest')
+      .select('condition_slug, condition_label, recruiting_count, updated_at, source')
+      .order('recruiting_count', { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+    const page = (data ?? []) as ConditionDirectoryRow[];
+    rows.push(...page);
+    if (page.length < CONDITIONS_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+function addConditionCount(map: Map<string, number>, slug: string) {
+  map.set(slug, (map.get(slug) || 0) + 1);
+}
+
+function conditionItemFromDirectoryRow(row: ConditionDirectoryRow): ConditionItem | null {
+  if (!row.condition_slug) return null;
+  const slug = row.condition_slug;
+  const seed = SEED_MAP.get(slug);
+  return {
+    ...(seed ?? {
+      slug,
+      label: row.condition_label || toConditionLabel(slug),
+    }),
+    count: row.recruiting_count ?? 0,
+    source: seed ? 'seed' : row.source ?? 'db',
+    lastUpdated: row.updated_at,
+  };
+}
+
+function isPatientFriendlyDirectoryItem(item: ConditionItem) {
+  if (FEATURED_SLUGS.includes(item.slug)) return true;
+  if (item.count < 5) return false;
+  const label = item.label.trim();
+  if (label.length < 4) return false;
+  if (!/[aeiou]/i.test(label)) return false;
+  if (/^\d/.test(label)) return false;
+  if (/\b\d+\s*\d*\s*centimeters?\b/i.test(label)) return false;
+  return true;
+}
+
+function isSearchableConditionItem(item: ConditionItem) {
+  if (FEATURED_SLUGS.includes(item.slug)) return true;
+  const label = item.label.trim();
+  if (label.length < 4) return false;
+  if (
+    /\b(freedom from|change in|endpoint|score|stent graft|at \d+\s*(weeks?|months?|years?)|centimeters?)\b/i
+      .test(label)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function fallbackSeedCatalog(): ConditionCatalog {
+  const seedItems = SEED_CONDITIONS.map((seed) => ({
+    ...seed,
+    count: 0,
+    source: 'seed' as const,
+    lastUpdated: null,
+  }));
+
+  return {
+    featured: seedItems.filter((item) => FEATURED_SLUGS.includes(item.slug)),
+    all: seedItems,
+    filtered: seedItems,
+    version: new Date().toISOString(),
+  };
+}
+
+async function queryConditionDirectoryRows({
+  query = '',
+  limit = DEFAULT_DIRECTORY_LIMIT,
+}: ConditionDirectoryQueryOptions = {}) {
+  const supabase = getServerSupabase();
+  let request = supabase
+    .from('condition_directory_latest')
+    .select('condition_slug, condition_label, recruiting_count, updated_at, source')
+    .order('recruiting_count', { ascending: false })
+    .limit(Math.min(Math.max(limit, 1), 500));
+
+  const trimmed = query.trim();
+  if (trimmed) {
+    request = request.ilike('condition_label', `%${trimmed}%`);
+  }
+
+  const { data, error } = await request;
+  if (error) throw error;
+  return (data ?? []) as ConditionDirectoryRow[];
+}
+
+export async function getConditionDirectoryPreview(limit = DEFAULT_DIRECTORY_LIMIT): Promise<ConditionCatalog> {
+  try {
+    const rows = await queryConditionDirectoryRows({ limit });
+    const items = rows
+      .map(conditionItemFromDirectoryRow)
+      .filter((item): item is ConditionItem => Boolean(item))
+      .filter(isPatientFriendlyDirectoryItem);
+
+    const bySlug = new Map(items.map((item) => [item.slug, item]));
+    for (const seed of SEED_CONDITIONS) {
+      if (!bySlug.has(seed.slug)) {
+        bySlug.set(seed.slug, {
+          ...seed,
+          count: 0,
+          source: 'seed',
+          lastUpdated: null,
+        });
+      }
+    }
+
+    const all = Array.from(bySlug.values()).sort(sortCatalogItems);
+    return {
+      featured: all.filter((item) => FEATURED_SLUGS.includes(item.slug)),
+      all,
+      filtered: all,
+      version: new Date().toISOString(),
+    };
+  } catch (error) {
+    devLog('Condition directory preview unavailable; using seed-only preview.', error);
+    return fallbackSeedCatalog();
+  }
+}
+
+export async function searchConditionDirectory({
+  query = '',
+  limit = 50,
+}: ConditionDirectoryQueryOptions = {}): Promise<ConditionItem[]> {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) {
+    const preview = await getConditionDirectoryPreview(limit);
+    return preview.all;
+  }
+
+  try {
+    const rows = await queryConditionDirectoryRows({ query: trimmed, limit });
+    return rows
+      .map(conditionItemFromDirectoryRow)
+      .filter((item): item is ConditionItem => Boolean(item))
+      .filter(isSearchableConditionItem)
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  } catch (error) {
+    devLog('Condition directory search unavailable; using seed-only search.', error);
+    const q = trimmed.toLowerCase();
+    return fallbackSeedCatalog().all
+      .filter((item) =>
+        item.label.toLowerCase().includes(q) ||
+        item.slug.toLowerCase().includes(q) ||
+        item.synonyms?.some((synonym) => synonym.toLowerCase().includes(q)),
+      )
+      .slice(0, limit);
+  }
+}
+
 // Core function to build catalog (cached)
 async function buildConditionCatalog(options: CatalogOptions = {}): Promise<ConditionCatalog> {
   const { includeEmpty = true, minCount = 0 } = options;
@@ -204,125 +417,99 @@ async function buildConditionCatalog(options: CatalogOptions = {}): Promise<Cond
   try {
     const supabase = getServerSupabase();
 
-    // --- Accurate counts for seed conditions ---
-    // Use parallel count-only queries (head:true) with the same overlaps filter as the
-    // condition slug page. This bypasses the 1000-row PostgREST cap entirely.
-    const seedCountResults = await Promise.all(
-      SEED_CONDITIONS.map(async (seed) => {
-        const filterValues = seedFilterValues(seed);
-        const [{ count: total }, { count: recruiting }] = await Promise.all([
-          supabase
-            .from('trials_serving_latest')
-            .select('nct_id', { count: 'exact', head: true })
-            .overlaps('conditions', filterValues),
-          supabase
-            .from('trials_serving_latest')
-            .select('nct_id', { count: 'exact', head: true })
-            .overlaps('conditions', filterValues)
-            .eq('status_bucket', 'Recruiting'),
-        ]);
-        return { slug: seed.slug, total: total ?? 0, recruiting: recruiting ?? 0 };
-      })
-    );
+    try {
+      const directoryRows = await fetchConditionDirectoryRows(supabase);
+      if (directoryRows.length > 0) {
+        const all = directoryRows
+          .filter((row) => row.condition_slug && (includeEmpty || (row.recruiting_count ?? 0) > 0))
+          .map((row): ConditionItem => {
+            const slug = row.condition_slug!;
+            const seed = SEED_MAP.get(slug);
+            return {
+              ...(seed ?? {
+                slug,
+                label: row.condition_label || toConditionLabel(slug),
+              }),
+              count: row.recruiting_count ?? 0,
+              source: seed ? 'seed' : row.source ?? 'db',
+              lastUpdated: row.updated_at,
+            };
+          });
+
+        all.sort(sortCatalogItems);
+        const featured = all.filter(item => FEATURED_SLUGS.includes(item.slug));
+        const filtered = all.filter(item =>
+          item.count >= minCount || FEATURED_SLUGS.includes(item.slug)
+        );
+
+        devLog(`✅ Built catalog from condition_directory_latest: ${all.length} conditions`);
+        return {
+          featured,
+          all,
+          filtered,
+          version: new Date().toISOString()
+        };
+      }
+    } catch (directoryError) {
+      devLog('Condition directory aggregate unavailable; falling back to trial scan.', directoryError);
+    }
 
     const slugCounts = new Map<string, number>();
-    const recruitingCounts = new Map<string, number>();
-    for (const { slug, total, recruiting } of seedCountResults) {
-      slugCounts.set(slug, total);
-      recruitingCounts.set(slug, recruiting);
-    }
+    const seedAliases = buildSeedAliasMap();
+    const rows = await fetchTrialConditionRows(supabase);
 
-    // --- Approximate counts for non-seed DB conditions ---
-    // Sample up to 1000 rows (PostgREST default cap) for ranking purposes only.
-    const { data: sampleData } = await supabase
-      .from('trials_serving_latest')
-      .select('conditions, status_bucket');
-
-    const seedSlugSet = new Set(SEED_CONDITIONS.map(s => s.slug));
-    let totalTrials = 0;
-    let recruitingTrials = 0;
-
-    for (const row of sampleData || []) {
-      totalTrials++;
-      const isRecruiting = row.status_bucket?.toLowerCase() === 'recruiting';
-      if (isRecruiting) recruitingTrials++;
-
+    for (const row of rows) {
       if (!Array.isArray(row.conditions)) continue;
+
+      const rowSlugs = new Set<string>();
       for (const rawSlug of row.conditions) {
-        const slug = toConditionSlug(String(rawSlug));
-        if (!slug || slug === 'other' || seedSlugSet.has(slug)) continue;
-        slugCounts.set(slug, (slugCounts.get(slug) || 0) + 1);
-        if (isRecruiting) recruitingCounts.set(slug, (recruitingCounts.get(slug) || 0) + 1);
+        const normalized = toConditionSlug(String(rawSlug));
+        if (!normalized || normalized === 'other') continue;
+        rowSlugs.add(seedAliases.get(normalized) ?? normalized);
       }
+
+      for (const slug of rowSlugs) addConditionCount(slugCounts, slug);
     }
 
-    devLog(`📊 Seed conditions counted via exact queries; ${totalTrials} sampled for non-seed ranking (${recruitingTrials} recruiting in sample)`);
-
-    // Create seed lookup map
-    const seedMap = new Map<string, Omit<ConditionItem, 'count' | 'source'>>();
-    for (const seed of SEED_CONDITIONS) {
-      seedMap.set(seed.slug, seed);
-    }
-
-    // Build all conditions array
     const all: ConditionItem[] = [];
 
-    // Add all slugs from database
-    for (const [slug, totalCount] of slugCounts.entries()) {
-      const recruitingCount = recruitingCounts.get(slug) || 0;
-      const seed = seedMap.get(slug);
+    for (const [slug, count] of slugCounts.entries()) {
+      const seed = SEED_MAP.get(slug);
       if (seed) {
-        // Merge with seed data - use recruiting count as primary
         all.push({
           ...seed,
-          count: recruitingCount,
+          count,
           source: 'seed',
           lastUpdated: null
         });
       } else {
-        // Unknown slug from DB - auto-label
         all.push({
           slug,
           label: toConditionLabel(slug),
-          count: recruitingCount,
+          count,
           source: 'db',
           lastUpdated: null
         });
       }
     }
 
-    // Add any missing seed conditions with 0 count
-    for (const seed of SEED_CONDITIONS) {
-      if (!slugCounts.has(seed.slug)) {
-        all.push({
-          ...seed,
-          count: 0,
-          source: 'seed',
-          lastUpdated: null
-        });
+    if (includeEmpty) {
+      for (const seed of SEED_CONDITIONS) {
+        if (!slugCounts.has(seed.slug)) {
+          all.push({
+            ...seed,
+            count: 0,
+            source: 'seed',
+            lastUpdated: null
+          });
+        }
       }
     }
 
+    devLog(`📊 Counted ${all.filter(c => c.count > 0).length} active conditions across ${rows.length} recruiting trials`);
+
     // Sort: Featured first (in seed order), then by trial count (descending)
-    all.sort((a, b) => {
-      const aFeatured = FEATURED_SLUGS.indexOf(a.slug);
-      const bFeatured = FEATURED_SLUGS.indexOf(b.slug);
-
-      // Both are featured - keep seed order
-      if (aFeatured !== -1 && bFeatured !== -1) {
-        return aFeatured - bFeatured;
-      }
-      // Only a is featured - a comes first
-      if (aFeatured !== -1) return -1;
-      // Only b is featured - b comes first
-      if (bFeatured !== -1) return 1;
-
-      // Neither is featured - sort by trial count (descending), then A-Z as tiebreaker
-      if (b.count !== a.count) {
-        return b.count - a.count;
-      }
-      return a.label.localeCompare(b.label);
-    });
+    all.sort(sortCatalogItems);
 
     // Extract featured conditions
     const featured = all.filter(item => FEATURED_SLUGS.includes(item.slug));
@@ -340,7 +527,6 @@ async function buildConditionCatalog(options: CatalogOptions = {}): Promise<Cond
     };
 
     devLog(`✅ Built catalog: ${featured.length} featured, ${all.length} total, ${filtered.length} filtered (minCount: ${minCount})`);
-    devLog(`🎯 DB-sourced conditions: ${all.filter(c => c.source === 'db').length}`);
 
     return catalog;
 
@@ -352,71 +538,36 @@ async function buildConditionCatalog(options: CatalogOptions = {}): Promise<Cond
       raw: error
     });
 
-    // Fallback to seed-only catalog
-    const fallback = SEED_CONDITIONS.map(seed => ({
-      ...seed,
-      count: 0,
-      source: 'seed' as const,
-      lastUpdated: null
-    }));
-
-    return {
-      featured: fallback.filter(item => FEATURED_SLUGS.includes(item.slug)),
-      all: fallback,
-      filtered: fallback.filter(item => FEATURED_SLUGS.includes(item.slug)), // Only featured in fallback
-      version: new Date().toISOString()
-    };
+    return fallbackSeedCatalog();
   }
 }
 
-async function getActiveReleaseCatalogVersion(): Promise<string> {
-  try {
-    const supabase = getServerSupabase();
-    const { data, error } = await supabase
-      .from('pipeline_releases')
-      .select('build_tag, activated_at, updated_at')
-      .eq('status', 'active')
-      .order('activated_at', { ascending: false, nullsFirst: false })
-      .order('updated_at', { ascending: false, nullsFirst: false })
-      .limit(1)
-      .maybeSingle();
+function sortCatalogItems(a: ConditionItem, b: ConditionItem) {
+      const aFeatured = FEATURED_SLUGS.indexOf(a.slug);
+      const bFeatured = FEATURED_SLUGS.indexOf(b.slug);
 
-    if (error) return 'unknown';
-    return [
-      data?.build_tag,
-      data?.activated_at,
-      data?.updated_at,
-    ].filter(Boolean).join(':') || 'unknown';
-  } catch {
-    return 'unknown';
-  }
+      // Both are featured - keep seed order
+      if (aFeatured !== -1 && bFeatured !== -1) {
+        return aFeatured - bFeatured;
+      }
+      // Only a is featured - a comes first
+      if (aFeatured !== -1) return -1;
+      // Only b is featured - b comes first
+      if (bFeatured !== -1) return 1;
+
+      // Neither is featured - sort by trial count (descending), then A-Z as tiebreaker
+      if (b.count !== a.count) {
+        return b.count - a.count;
+      }
+      return a.label.localeCompare(b.label);
 }
-
-// Cached version with 12h revalidation. The active release version is an
-// argument so Vercel does not reuse a stale condition catalog after a release flip.
-const getConditionCatalogForRelease = unstable_cache(
-  async (_activeReleaseVersion: string) => buildConditionCatalog(),
-  ['condition-catalog-v5'],
-  {
-    tags: ['conditions'],
-    revalidate: 43200 // 12 hours
-  }
-);
 
 export async function getConditionCatalog(): Promise<ConditionCatalog> {
-  const activeReleaseVersion = await getActiveReleaseCatalogVersion();
-  return getConditionCatalogForRelease(activeReleaseVersion);
+  return buildConditionCatalog();
 }
 
 // Backward-compatible cached export name for code that imports it as a value.
-export const getConditionCatalogCached = unstable_cache(
-  buildConditionCatalog,
-  ['condition-catalog-v5-legacy'],
-  {
-    tags: ['conditions'],
-    revalidate: 43200 // 12 hours
-  }
-);
+export const getConditionCatalogCached = buildConditionCatalog;
 
 // Non-cached version for API routes that need options
 export async function getConditionCatalogWithOptions(options: CatalogOptions = {}): Promise<ConditionCatalog> {

@@ -1,7 +1,6 @@
 import { getServerSupabase } from "@/lib/supabaseServer";
 import { getServiceClient } from "@/lib/supabaseAdmin";
 import {
-  fetchNearestSitesMeta,
   fetchNearestTrialsPage,
   fetchNearestTrialsPageByBoundingBox,
   applyNearestMetaToTrials,
@@ -300,36 +299,47 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
   let expansionNearestMiles: number | null = null;
   let proximityTotalCount: number | null = null;
   let locationSearchFailed = false;
+  const statusValuesForProximity = defaultRecruitingApplied
+    ? ["Recruiting"]
+    : parseStatusBuckets(statusBucketRaw).map(toDbStatusBucket);
+  const proximityFilters = {
+    conditionValues: conditionFilterValues,
+    statusValues: statusValuesForProximity,
+    q,
+    phases,
+    age: typeof effectiveAge === "number" && Number.isFinite(effectiveAge) ? effectiveAge : null,
+    sex: typeof effectiveSex === "string" ? effectiveSex : null,
+  };
 
   if (location) {
-    const canUseFastProximityPage =
-      !q &&
-      phases.length === 0 &&
-      !urlAge &&
-      !urlSex;
+    const activeReleaseTag = await activeReleaseTagPromise;
+    const siteFallbackClient = getDirectSiteFallbackClient(supabase);
+    const fallbackPage = await fetchNearestTrialsPageByBoundingBox(
+      siteFallbackClient,
+      location.lat,
+      location.lon,
+      effectiveRadius,
+      PAGE_SIZE,
+      from,
+      {
+        ...proximityFilters,
+        buildTag: activeReleaseTag,
+      },
+    );
 
-    if (canUseFastProximityPage) {
-      const statusValues = defaultRecruitingApplied
-        ? ["Recruiting"]
-        : parseStatusBuckets(statusBucketRaw).map(toDbStatusBucket);
-      const siteFallbackClient = getDirectSiteFallbackClient(supabase);
-      const fallbackPage = await fetchNearestTrialsPageByBoundingBox(
-        siteFallbackClient,
-        location.lat,
-        location.lon,
-        effectiveRadius,
-        PAGE_SIZE,
-        from,
-        conditionFilterValues,
-        statusValues,
-      );
+    if (!fallbackPage.error && fallbackPage.idsWithinRadius.length > 0) {
+      metaByNctId = fallbackPage.metaByNctId;
+      nearbyIds = fallbackPage.idsWithinRadius;
+      proximityTotalCount = fallbackPage.totalCount;
+      proximityApplied = true;
+    } else {
+      const canUseLegacyProximityRpc =
+        !q &&
+        phases.length === 0 &&
+        !urlAge &&
+        !urlSex;
 
-      if (!fallbackPage.error && fallbackPage.idsWithinRadius.length > 0) {
-        metaByNctId = fallbackPage.metaByNctId;
-        nearbyIds = fallbackPage.idsWithinRadius;
-        proximityTotalCount = fallbackPage.totalCount;
-        proximityApplied = true;
-      } else {
+      if (canUseLegacyProximityRpc) {
         const nearestPage = await fetchNearestTrialsPage(
           supabase,
           location.lat,
@@ -338,9 +348,8 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
           PAGE_SIZE,
           from,
           conditionFilterValues,
-          statusValues,
+          statusValuesForProximity,
         );
-
         if (!nearestPage.error && nearestPage.idsWithinRadius.length > 0) {
           metaByNctId = nearestPage.metaByNctId;
           nearbyIds = nearestPage.idsWithinRadius;
@@ -357,7 +366,7 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
             PAGE_SIZE,
             from,
             conditionFilterValues,
-            statusValues,
+            statusValuesForProximity,
           );
           if (!expanded.error && expanded.idsWithinRadius.length > 0) {
             metaByNctId = expanded.metaByNctId;
@@ -371,43 +380,8 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
             if (distances.length > 0) expansionNearestMiles = Math.round(Math.min(...distances));
           }
         }
-      }
-    } else {
-      const nearest = await fetchNearestSitesMeta(
-        supabase,
-        location.lat,
-        location.lon,
-        effectiveRadius
-      );
-
-      if (!nearest.error && nearest.idsWithinRadius.length > 0) {
-        metaByNctId = nearest.metaByNctId;
-        nearbyIds = nearest.idsWithinRadius;
-        proximityApplied = true;
-      } else if (nearest.error) {
+      } else if (fallbackPage.error) {
         locationSearchFailed = true;
-      } else {
-        // No results within radius — silently expand to find nearest trials regardless of distance
-        const expanded = await fetchNearestSitesMeta(
-          supabase,
-          location.lat,
-          location.lon,
-          null, // no radius cap
-          PAGE_SIZE * 2,
-        );
-        if (!expanded.error && expanded.idsWithinRadius.length > 0) {
-          metaByNctId = expanded.metaByNctId;
-          nearbyIds = expanded.idsWithinRadius;
-          proximityApplied = true;
-          expansionApplied = true;
-          // Find the closest distance among returned results
-          const distances = Object.values(expanded.metaByNctId)
-            .map(m => m.nearest_miles)
-            .filter((d): d is number => d !== null && d !== undefined);
-          if (distances.length > 0) expansionNearestMiles = Math.round(Math.min(...distances));
-        } else if (expanded.error) {
-          locationSearchFailed = true;
-        }
       }
     }
   }
@@ -419,11 +393,14 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
   // The view's exact count can timeout on broad pages, while its estimated count can be
   // wildly wrong. Keep estimated count only as a query-planning hint for broad sorted
   // reads, then compute the display total from the indexed base trials table below.
-  const useEstimatedCountForPlan = conditionFilterValues.length === 0 && !Boolean(q);
+  const useEstimatedCountForPlan = !proximityApplied && conditionFilterValues.length === 0 && !Boolean(q);
+  const selectOptions = proximityApplied
+    ? undefined
+    : { count: useEstimatedCountForPlan ? "estimated" as const : "exact" as const };
 
-  let query = supabase
-    .from("trials_serving_latest")
-    .select(TRIALS_PUBLIC_SELECT, { count: useEstimatedCountForPlan ? "estimated" : "exact" });
+  let query = selectOptions
+    ? supabase.from("trials_serving_latest").select(TRIALS_PUBLIC_SELECT, selectOptions)
+    : supabase.from("trials_serving_latest").select(TRIALS_PUBLIC_SELECT);
 
   // Apply Filters
   if (conditionFilterValues.length > 0) {
@@ -431,11 +408,11 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
   }
   if (q) query = query.ilike("title", `%${q}%`);
 
-  query = applyStatusFilter(query, statusBucketRaw, defaultRecruitingApplied);
-  query = applyEligibilityFilters(query, effectiveAge, effectiveSex, phases);
-
   if (proximityApplied && nearbyIds) {
     query = query.in("nct_id", nearbyIds);
+  } else {
+    query = applyStatusFilter(query, statusBucketRaw, defaultRecruitingApplied);
+    query = applyEligibilityFilters(query, effectiveAge, effectiveSex, phases);
   }
 
   let trialsData: PublicTrial[] = [];
@@ -465,22 +442,28 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
     return count;
   })();
 
+  // For proximity mode we already know the page IDs — start the summaries query in
+  // parallel with the main trials fetch so we don't pay two sequential roundtrips.
+  const proximitySummaryPromise = (proximityApplied && nearbyIds && nearbyIds.length > 0)
+    ? supabase.from("trial_insights_latest").select("nct_id, plain_summary_json").in("nct_id", nearbyIds)
+    : null;
+
   if (proximityApplied && nearbyIds) {
-    // PROXIMITY MODE: fast path already paginates nearby IDs in Postgres.
+    // PROXIMITY MODE: nearby eligibility path already filters, counts, and paginates IDs.
     const { data: supabaseData, error } = await query;
     if (error) throw error;
-    
+
     const unsortedData = (supabaseData ?? []) as PublicTrial[];
     const idToIndex = new Map(nearbyIds.map((id, index) => [id, index]));
-    
+
     const sortedData = unsortedData.sort((a, b) => {
        const idxA = idToIndex.get(a.nct_id) ?? Infinity;
        const idxB = idToIndex.get(b.nct_id) ?? Infinity;
        return idxA - idxB;
     });
-    
+
     totalCount = proximityTotalCount ?? sortedData.length;
-    trialsData = proximityTotalCount == null ? sortedData.slice(from, to + 1) : sortedData;
+    trialsData = sortedData;
     proximityTitle = `trials near ${effectiveZip}`;
   } else if (broadBrowseSortApplied && defaultRecruitingApplied) {
     const activeReleaseTag = await activeReleaseTagPromise;
@@ -500,10 +483,10 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
       ? query.order("nct_id", { ascending: true })
       : applyTrialsSort(query);
     query = query.range(from, to);
-    
+
     const { data: supabaseData, count: supabaseCount, error } = await query;
     if (error) throw error;
-    
+
     trialsData = (supabaseData ?? []) as PublicTrial[];
     const exactTotalCount = await exactTotalCountPromise;
     totalCount = exactTotalCount ?? supabaseCount ?? trialsData.length;
@@ -514,16 +497,15 @@ export async function fetchTrials({ searchParams, profile }: FetchTrialsOptions)
     trialsData = await applyNearestMetaToTrials(trialsData, metaByNctId) as PublicTrial[];
   }
 
-  // Batch-fetch AI summaries for card blurbs
+  // Batch-fetch AI summaries for card blurbs (proximity path already started this above)
   const nctIds = trialsData.map(t => t.nct_id);
   if (nctIds.length > 0) {
-    const { data: summaryRows } = await supabase
-      .from("trial_insights_latest")
-      .select("nct_id, plain_summary_json")
-      .in("nct_id", nctIds);
+    const summaryResult = proximitySummaryPromise
+      ? await proximitySummaryPromise
+      : await supabase.from("trial_insights_latest").select("nct_id, plain_summary_json").in("nct_id", nctIds);
 
     const summaryMap = new Map<string, string>();
-    for (const row of summaryRows ?? []) {
+    for (const row of summaryResult.data ?? []) {
       try {
         const json = typeof row.plain_summary_json === "string"
           ? JSON.parse(row.plain_summary_json)

@@ -98,19 +98,26 @@ export default async function ConditionPage({
   let query = supabase
     .from('trials_serving_latest')
     .select('nct_id, title, display_title, status_bucket, conditions, quality_score, data_as_of_date, site_count_us, states_list');
+  let countQuery = supabase
+    .from('trials_serving_latest')
+    .select('nct_id', { count: 'exact', head: true });
 
   if (filterValues.length > 0) query = query.overlaps('conditions', filterValues);
+  if (filterValues.length > 0) countQuery = countQuery.overlaps('conditions', filterValues);
 
-	  const { data: trialsData } = await query
-	    .eq('status_bucket', 'Recruiting')
-	    .order('data_as_of_date', { ascending: false, nullsFirst: false })
-	    .order('quality_score', { ascending: false, nullsFirst: false })
-	    .limit(80);
+  const [{ data: trialsData }, { count }] = await Promise.all([
+    query
+      .eq('status_bucket', 'Recruiting')
+      .order('data_as_of_date', { ascending: false, nullsFirst: false })
+      .order('quality_score', { ascending: false, nullsFirst: false })
+      .limit(80),
+    countQuery.eq('status_bucket', 'Recruiting'),
+  ]);
 
-	  const trials = (trialsData ?? []) as ConditionTrial[];
-	  const recentTrials = trials.slice(0, Math.min(6, trials.length));
-	  const recruitingCount = trials.length;
-	  const recruitingTrialsHref = `/trials?condition=${slug}&status_bucket=recruiting`;
+  const trials = (trialsData ?? []) as ConditionTrial[];
+  const recentTrials = trials.slice(0, Math.min(6, trials.length));
+  const recruitingCount = count ?? trials.length;
+  const recruitingTrialsHref = `/trials?condition=${slug}&status_bucket=recruiting`;
 
   return (
     <>

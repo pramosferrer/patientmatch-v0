@@ -1,19 +1,15 @@
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
-import { getConditionCatalog } from '@/shared/conditions.catalog';
+import { getConditionDirectoryPreview } from '@/shared/conditions.catalog';
 import ConditionsClient from './ConditionsClient';
 
 export default async function AllConditionsPage({
   searchParams
 }: {
-  searchParams: Promise<{ q?: string; includeEmpty?: string; sort?: string }>
+  searchParams: Promise<{ q?: string; includeEmpty?: string }>
 }) {
-  const { q, includeEmpty, sort } = await searchParams;
-  const catalog = await getConditionCatalog();
-  const initialSort =
-    sort === 'trials' || sort === 'recent'
-      ? sort
-      : 'az';
+  const { q, includeEmpty } = await searchParams;
+  const catalog = await getConditionDirectoryPreview();
   const initialQuery = q ?? '';
   const initialIncludeEmpty = includeEmpty === 'true';
   return (
@@ -22,7 +18,6 @@ export default async function AllConditionsPage({
         catalog={catalog}
         initialQuery={initialQuery}
         initialIncludeEmpty={initialIncludeEmpty}
-        initialSort={initialSort}
       />
     </main>
   );

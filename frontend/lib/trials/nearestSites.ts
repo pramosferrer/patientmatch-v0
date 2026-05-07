@@ -24,7 +24,19 @@ export type NearestTrialsPageResult = NearestSitesResult & {
   totalCount: number;
 };
 
+export type NearestTrialFilters = {
+  conditionValues?: string[];
+  statusValues?: string[];
+  q?: string;
+  phases?: string[];
+  age?: number | null;
+  sex?: string | null;
+  buildTag?: string | null;
+};
+
 const EARTH_RADIUS_MILES = 3958.7613;
+const MAX_NEARBY_CANDIDATES = 2000;
+const MAX_BOUNDING_BOX_SITE_ROWS = 10000;
 
 const toNumberOrNull = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -70,6 +82,86 @@ function boundingBox(
     minLon: lon - lonDelta,
     maxLon: lon + lonDelta,
   };
+}
+
+function buildPhaseOrFilter(phases: string[]): string {
+  return phases.map((phase) => `phase.ilike.%Phase ${phase}%`).join(',');
+}
+
+function normalizeSexFilter(value: unknown): 'male' | 'female' | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  if (['male', 'm', 'man', 'men'].includes(normalized)) return 'male';
+  if (['female', 'f', 'woman', 'women'].includes(normalized)) return 'female';
+  return null;
+}
+
+async function fetchActiveBuildTag(supabase: SupabaseClient): Promise<{ buildTag: string | null; error?: unknown }> {
+  const release = await supabase
+    .from('pipeline_releases')
+    .select('build_tag')
+    .eq('status', 'active')
+    .order('activated_at', { ascending: false, nullsFirst: false })
+    .order('updated_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  return {
+    buildTag: toStringOrNull(release.data?.build_tag),
+    error: release.error,
+  };
+}
+
+function applyTrialEligibilityFilters<Query extends {
+  eq: (column: string, value: unknown) => Query;
+  ilike: (column: string, value: string) => Query;
+  in: (column: string, values: unknown[]) => Query;
+  overlaps: (column: string, values: unknown[]) => Query;
+  or: (filters: string) => Query;
+}>(
+  query: Query,
+  {
+    conditionValues = [],
+    statusValues = [],
+    q = '',
+    phases = [],
+    age = null,
+    sex = null,
+  }: NearestTrialFilters,
+): Query {
+  if (conditionValues.length > 0) {
+    query = query.overlaps('conditions', conditionValues);
+  }
+  if (statusValues.length > 0) {
+    query = query.in('status_bucket', statusValues);
+  }
+  if (q.trim()) {
+    query = query.ilike('title', `%${q.trim()}%`);
+  }
+  if (phases.length > 0) {
+    query = query.or(buildPhaseOrFilter(phases));
+  }
+
+  if (typeof age === 'number' && Number.isFinite(age)) {
+    const roundedAge = Math.max(0, Math.round(age));
+    query = query.or(
+      [
+        'and(min_age_years.is.null,max_age_years.is.null)',
+        `and(min_age_years.is.null,max_age_years.gte.${roundedAge})`,
+        `and(min_age_years.lte.${roundedAge},max_age_years.is.null)`,
+        `and(min_age_years.lte.${roundedAge},max_age_years.gte.${roundedAge})`,
+      ].join(','),
+    );
+  }
+
+  const sexFilter = normalizeSexFilter(sex);
+  if (sexFilter === 'male') {
+    query = query.in('gender', ['MALE', 'male', 'ALL', 'all', 'BOTH', 'both', 'ANY', 'any']);
+  } else if (sexFilter === 'female') {
+    query = query.in('gender', ['FEMALE', 'female', 'ALL', 'all', 'BOTH', 'both', 'ANY', 'any']);
+  }
+
+  return query;
 }
 
 export async function fetchNearestSitesMeta(
@@ -141,6 +233,99 @@ export async function fetchNearestSitesMeta(
   return { idsWithinRadius: Array.from(idsWithinRadiusSet), metaByNctId };
 }
 
+export async function fetchNearestSitesMetaByBoundingBox(
+  supabase: SupabaseClient,
+  lat: number,
+  lon: number,
+  radiusMiles: number | null,
+  limitRows = MAX_NEARBY_CANDIDATES,
+): Promise<NearestSitesResult> {
+  if (radiusMiles == null) {
+    return fetchNearestSitesMeta(supabase, lat, lon, null, limitRows);
+  }
+
+  const release = await supabase
+    .from('pipeline_releases')
+    .select('build_tag')
+    .eq('status', 'active')
+    .order('activated_at', { ascending: false, nullsFirst: false })
+    .order('updated_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  const buildTag = toStringOrNull(release.data?.build_tag);
+  if (release.error || !buildTag) {
+    return { idsWithinRadius: [], metaByNctId: {}, error: release.error };
+  }
+
+  const box = boundingBox(lat, lon, Math.max(radiusMiles, 5));
+  const buildSitesQuery = (filterToActiveBuild: boolean) => {
+    let query = supabase
+      .from('trial_sites')
+      .select('nct_id, city, state_code, facility_name, lat, lon')
+      .gte('lat', box.minLat)
+      .lte('lat', box.maxLat)
+      .gte('lon', box.minLon)
+      .lte('lon', box.maxLon)
+      .limit(MAX_BOUNDING_BOX_SITE_ROWS);
+
+    if (filterToActiveBuild) {
+      query = query.eq('build_tag', buildTag);
+    }
+
+    return query;
+  };
+
+  let sites = await buildSitesQuery(true);
+  if (!sites.error && Array.isArray(sites.data) && sites.data.length === 0) {
+    sites = await buildSitesQuery(false);
+  }
+
+  if (sites.error || !Array.isArray(sites.data)) {
+    return { idsWithinRadius: [], metaByNctId: {}, error: sites.error };
+  }
+
+  const nearestByNctId = new Map<string, NearestSiteMeta>();
+  for (const rawRow of sites.data) {
+    const row = rawRow as Record<string, unknown>;
+    const nctId = toStringOrNull(row.nct_id);
+    const siteLat = toNumberOrNull(row.lat);
+    const siteLon = toNumberOrNull(row.lon);
+    if (!nctId || siteLat == null || siteLon == null) continue;
+
+    const nearest_miles = distanceMiles(lat, lon, siteLat, siteLon);
+    if (nearest_miles > radiusMiles) continue;
+
+    const existing = nearestByNctId.get(nctId);
+    if (existing?.nearest_miles != null && existing.nearest_miles <= nearest_miles) continue;
+
+    nearestByNctId.set(nctId, {
+      nct_id: nctId,
+      nearest_miles,
+      distance_miles: Math.round(nearest_miles * 100) / 100,
+      city: toStringOrNull(row.city),
+      state_code: toStringOrNull(row.state_code),
+      facility_name: toStringOrNull(row.facility_name),
+      lat: siteLat,
+      lon: siteLon,
+      geocode_source: null,
+    });
+  }
+
+  const nearest = Array.from(nearestByNctId.values())
+    .sort((a, b) => {
+      const aMiles = a.nearest_miles ?? Number.POSITIVE_INFINITY;
+      const bMiles = b.nearest_miles ?? Number.POSITIVE_INFINITY;
+      return aMiles - bMiles || a.nct_id.localeCompare(b.nct_id);
+    })
+    .slice(0, limitRows);
+
+  return {
+    idsWithinRadius: nearest.map((site) => site.nct_id),
+    metaByNctId: Object.fromEntries(nearest.map((site) => [site.nct_id, site])),
+  };
+}
+
 export async function fetchNearestTrialsPage(
   supabase: SupabaseClient,
   lat: number,
@@ -206,21 +391,20 @@ export async function fetchNearestTrialsPageByBoundingBox(
   radiusMiles: number,
   pageSize: number,
   offset: number,
-  conditionValues: string[] = [],
+  conditionValuesOrFilters: string[] | NearestTrialFilters = [],
   statusValues: string[] = [],
 ): Promise<NearestTrialsPageResult> {
-  const release = await supabase
-    .from('pipeline_releases')
-    .select('build_tag')
-    .eq('status', 'active')
-    .order('activated_at', { ascending: false, nullsFirst: false })
-    .order('updated_at', { ascending: false, nullsFirst: false })
-    .limit(1)
-    .maybeSingle();
+  const filters: NearestTrialFilters = Array.isArray(conditionValuesOrFilters)
+    ? { conditionValues: conditionValuesOrFilters, statusValues }
+    : conditionValuesOrFilters;
 
-  const buildTag = toStringOrNull(release.data?.build_tag);
-  if (release.error || !buildTag) {
-    return { idsWithinRadius: [], metaByNctId: {}, totalCount: 0, error: release.error };
+  const activeBuild = filters.buildTag
+    ? { buildTag: filters.buildTag, error: null }
+    : await fetchActiveBuildTag(supabase);
+
+  const buildTag = activeBuild.buildTag;
+  if (activeBuild.error || !buildTag) {
+    return { idsWithinRadius: [], metaByNctId: {}, totalCount: 0, error: activeBuild.error };
   }
 
   const box = boundingBox(lat, lon, Math.max(radiusMiles, 5));
@@ -232,7 +416,7 @@ export async function fetchNearestTrialsPageByBoundingBox(
       .lte('lat', box.maxLat)
       .gte('lon', box.minLon)
       .lte('lon', box.maxLon)
-      .limit(10000);
+      .limit(MAX_BOUNDING_BOX_SITE_ROWS);
 
     if (filterToActiveBuild) {
       query = query.eq('build_tag', buildTag);
@@ -295,14 +479,10 @@ export async function fetchNearestTrialsPageByBoundingBox(
     .from('trials')
     .select('nct_id')
     .eq('build_tag', buildTag)
-    .in('nct_id', nearest.slice(0, 2000).map((site) => site.nct_id));
+    .in('nct_id', nearest.slice(0, MAX_NEARBY_CANDIDATES).map((site) => site.nct_id))
+    .limit(MAX_NEARBY_CANDIDATES);
 
-  if (statusValues.length > 0) {
-    eligibilityQuery = eligibilityQuery.in('status_bucket', statusValues);
-  }
-  if (conditionValues.length > 0) {
-    eligibilityQuery = eligibilityQuery.overlaps('conditions', conditionValues);
-  }
+  eligibilityQuery = applyTrialEligibilityFilters(eligibilityQuery, filters);
 
   const eligible = await eligibilityQuery;
   if (eligible.error || !Array.isArray(eligible.data)) {

@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getConditionCatalog } from '@/shared/conditions.catalog';
+import { getConditionSuggestions } from '@/lib/conditions';
+import { FEATURED_CONDITIONS } from '@/shared/conditions';
+import { toConditionLabel } from '@/shared/conditions-normalize';
 import { z } from 'zod';
+
+export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 
 const QuerySchema = z.object({
     query: z.string().trim().max(120).optional(),
@@ -18,33 +23,28 @@ export async function GET(request: Request) {
             );
         }
         
-        const catalog = await getConditionCatalog();
-        
-        // If no query, return all conditions with trials (count > 0)
+        // If no query, return a small curated set without scanning the full catalog.
         if (!parsed.data.query || parsed.data.query.length < 2) {
-            const withTrials = catalog.all
-                .filter(c => c.count > 0)
-                .slice(0, 50)
-                .map(c => ({
-                    slug: c.slug,
-                    label: c.label
-                }));
-            return NextResponse.json(withTrials);
+            return NextResponse.json(
+                FEATURED_CONDITIONS.slice(0, 20).map((slug) => ({
+                    slug,
+                    label: toConditionLabel(slug),
+                })),
+                {
+                    headers: {
+                        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=86400',
+                    },
+                }
+            );
         }
+
+        const results = await getConditionSuggestions(parsed.data.query);
         
-        // Search in labels and synonyms
-        const normalizedQuery = parsed.data.query.toLowerCase().trim();
-        const matches = catalog.all.filter(c => 
-            c.label.toLowerCase().includes(normalizedQuery) || 
-            c.synonyms?.some(s => s.toLowerCase().includes(normalizedQuery))
-        );
-        
-        const results = matches.slice(0, 20).map(c => ({
-            slug: c.slug,
-            label: c.label
-        }));
-        
-        return NextResponse.json(results);
+        return NextResponse.json(results, {
+            headers: {
+                'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=86400',
+            },
+        });
     } catch (error) {
         console.error('Error fetching conditions:', error);
         return NextResponse.json(
