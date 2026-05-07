@@ -36,25 +36,31 @@ export type PmqAdapterResult = {
   initialAnswers: Record<string, any>;
 };
 
+function preserveCase(source: string, replacement: string): string {
+  return source[0] === source[0]?.toUpperCase()
+    ? `${replacement[0]?.toUpperCase() ?? ""}${replacement.slice(1)}`
+    : replacement;
+}
+
 function transformForCaregiver(text: string): string {
   return text
-    .replace(/\bHave you\b/g, "Have they")
-    .replace(/\bDo you\b/g, "Do they")
-    .replace(/\bAre you\b/g, "Are they")
-    .replace(/\bWere you\b/g, "Were they")
-    .replace(/\bCan you\b/g, "Can they")
-    .replace(/\bDid you\b/g, "Did they")
-    .replace(/\bWill you\b/g, "Will they")
-    .replace(/\bYour\b/g, "Their")
-    .replace(/\byour\b/g, "their")
-    .replace(/\byourself\b/g, "themselves")
-    .replace(/\byou've\b/g, "they've")
-    .replace(/\byou're\b/g, "they're")
-    .replace(/\byou are\b/g, "they are")
-    .replace(/\byou have\b/g, "they have")
-    // Subject-position "you" already handled above; remaining instances are
-    // object-position (e.g. "explained to you") — use "them" not "they"
-    .replace(/\byou\b/g, "them");
+    .replace(/\byourself\b/gi, (match) => preserveCase(match, "themselves"))
+    .replace(/\byou've\b/gi, (match) => preserveCase(match, "they've"))
+    .replace(/\byou're\b/gi, (match) => preserveCase(match, "they're"))
+    .replace(/\byou are\b/gi, (match) => preserveCase(match, "they are"))
+    .replace(/\byou have\b/gi, (match) => preserveCase(match, "they have"))
+    .replace(/\byou can\b/gi, (match) => preserveCase(match, "they can"))
+    .replace(/\byou could\b/gi, (match) => preserveCase(match, "they could"))
+    .replace(/\byou will\b/gi, (match) => preserveCase(match, "they will"))
+    .replace(/\byou would\b/gi, (match) => preserveCase(match, "they would"))
+    .replace(/\b(have|do|does|are|were|can|could|did|will|would|should)\s+you\b/gi, (match, aux: string) => {
+      const replacement = `${aux.toLowerCase()} they`;
+      return preserveCase(match, replacement);
+    })
+    .replace(/\byour\b/gi, (match) => preserveCase(match, "their"))
+    // Subject-position "you" should be handled above. Remaining instances are
+    // object-position, e.g. "explained to you" or "apply to you".
+    .replace(/\byou\b/gi, (match) => preserveCase(match, "them"));
 }
 
 const hasValue = (value: unknown): boolean => {

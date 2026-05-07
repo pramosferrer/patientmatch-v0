@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Database, EyeOff, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export const metadata = {
@@ -10,94 +9,139 @@ export const metadata = {
 
 const principles = [
   {
-    title: "Public trial data, made readable",
-    body: "We start with ClinicalTrials.gov listings, then organize the information into summaries, screening questions, and next-step prompts that are easier to discuss with a clinician or study team.",
-    icon: Database,
+    title: "Readable public data",
+    body: "ClinicalTrials.gov listings are public, but they are rarely written for patients. We translate the structure into plain-language summaries, practical filters, and screening questions.",
   },
   {
     title: "Private by default",
     body: "You can browse and pre-screen without giving us your name, email, or phone number. We do not sell leads or send patient details to trial sites.",
-    icon: EyeOff,
   },
   {
-    title: "A pre-screen, not a decision",
+    title: "Pre-screening, not medical advice",
     body: "PatientMatch can flag likely fits and obvious blockers. Final eligibility still depends on records, labs, imaging, and site review.",
-    icon: ShieldCheck,
   },
 ];
+
+const missionRows = [
+  "Make trial discovery usable before someone shares contact information.",
+  "Show why a study may or may not fit in language patients can discuss with a clinician.",
+  "Point back to official listings instead of hiding the source of truth.",
+];
+
+const founderRows = [
+  "PatientMatch is being built independently by Pablo Ramos Ferrer.",
+  "The work is focused on patient utility: fewer opaque listings, less lead generation, and clearer next steps.",
+  "The product stays intentionally narrow: explain public information, support private pre-screening, and help people prepare better questions.",
+];
+
+function CheckRows({ rows }: { rows: string[] }) {
+  return (
+    <div className="divide-y divide-border/40">
+      {rows.map((row) => (
+        <div key={row} className="grid grid-cols-[20px_1fr] gap-4 py-4">
+          <span className="pt-0.5 text-[15px] font-semibold text-primary" aria-hidden="true">
+            ✓
+          </span>
+          <p className="text-[15.5px] leading-relaxed text-muted-foreground">{row}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function AboutPage() {
   return (
     <main className="bg-background">
-      <section className="pm-container py-12 md:py-16">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-start">
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <p className="pm-eyebrow text-[11px] font-semibold">About PatientMatch</p>
-              <h1 className="font-heading text-[34px] font-semibold leading-tight text-foreground md:text-5xl">
-                Clinical trial search should be easier to understand.
-              </h1>
-              <p className="max-w-3xl text-base leading-7 text-muted-foreground md:text-lg">
-                PatientMatch helps people find active clinical trials, answer patient-friendly
-                screening questions, and prepare for a more focused conversation with their doctor
-                or a study team.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <Button asChild variant="brand" className="rounded-lg">
+      <section className="bg-white py-16 md:py-24">
+        <div className="pm-container">
+          <div className="max-w-3xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+              About PatientMatch
+            </p>
+            <h1
+              className="mt-5 font-display font-normal leading-[1.08] tracking-[-0.022em] text-foreground"
+              style={{ fontSize: "clamp(36px, 4.2vw, 56px)" }}
+            >
+              Clinical trial search should feel clear, private, and{" "}
+              <em className="italic text-primary">human.</em>
+            </h1>
+            <p className="mt-6 max-w-2xl text-[17px] leading-relaxed text-muted-foreground md:text-[17.5px]">
+              PatientMatch helps people find active clinical trials, answer patient-friendly
+              screening questions, and prepare for a more focused conversation with their doctor or
+              a study team.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Button asChild variant="brand" className="h-12 px-7 text-[15px]">
                 <Link href="/trials">Find trials</Link>
               </Button>
-              <Button asChild variant="outline" className="rounded-lg">
+              <Button asChild variant="outline" className="h-12 px-7 text-[15px]">
                 <Link href="/privacy">Read the privacy policy</Link>
               </Button>
             </div>
           </div>
-
-          <aside className="rounded-lg border border-border/60 bg-white p-6 shadow-sm">
-            <h2 className="text-base font-semibold text-foreground">Built independently</h2>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              PatientMatch is being built by Pablo Ramos Ferrer as a privacy-first public-good
-              project. The goal is practical: make public trial information easier for patients to
-              use without turning them into referrals.
-            </p>
-          </aside>
         </div>
       </section>
 
-      <section className="border-y border-border/40 bg-white/70">
-        <div className="pm-container py-10 md:py-12">
-          <div className="grid gap-5 md:grid-cols-3">
-            {principles.map((item) => {
-              const Icon = item.icon;
-              return (
-                <article key={item.title} className="rounded-lg border border-border/50 bg-white p-5 shadow-sm">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <h2 className="mt-4 text-base font-semibold text-foreground">{item.title}</h2>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.body}</p>
-                </article>
-              );
-            })}
+      <section className="bg-[#E8EDE6] py-24">
+        <div className="pm-container grid gap-12 md:grid-cols-[5fr_7fr] md:gap-20">
+          <div className="md:sticky md:top-24 md:self-start">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+              Mission
+            </p>
+            <h2
+              className="mt-4 font-display font-normal leading-[1.14] tracking-[-0.015em] text-foreground"
+              style={{ fontSize: "clamp(26px, 3vw, 40px)" }}
+            >
+              Turn registry data into a better patient decision.
+            </h2>
+            <p className="mt-5 text-[16px] leading-relaxed text-muted-foreground">
+              We focus on the practical gap between finding a listing and knowing what to ask next.
+            </p>
+          </div>
+          <CheckRows rows={missionRows} />
+        </div>
+      </section>
+
+      <section className="bg-white py-24">
+        <div className="pm-container grid gap-12 md:grid-cols-[5fr_7fr] md:gap-20">
+          <div className="md:sticky md:top-24 md:self-start">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+              Principles
+            </p>
+            <h2
+              className="mt-4 font-display font-normal leading-[1.14] tracking-[-0.015em] text-foreground"
+              style={{ fontSize: "clamp(26px, 3vw, 40px)" }}
+            >
+              Built for trust before conversion.
+            </h2>
+          </div>
+          <div className="divide-y divide-border/40">
+            {principles.map((item) => (
+              <article key={item.title} className="py-6 first:pt-0">
+                <h3 className="text-[18px] font-semibold text-foreground">{item.title}</h3>
+                <p className="mt-2 text-[15.5px] leading-relaxed text-muted-foreground">
+                  {item.body}
+                </p>
+              </article>
+            ))}
           </div>
         </div>
       </section>
 
-      <section className="pm-container py-10 md:py-14">
-        <div className="max-w-3xl space-y-4">
-          <h2 className="text-xl font-semibold text-foreground">What we are trying to fix</h2>
-          <p className="text-sm leading-6 text-muted-foreground md:text-base md:leading-7">
-            Clinical trial listings are public, but they are rarely written for the people deciding
-            whether to ask about them. PatientMatch focuses on the gap between a registry listing
-            and a useful next step: what the study is testing, what might rule someone out, and what
-            to confirm before spending time on outreach.
-          </p>
-          <p className="text-sm leading-6 text-muted-foreground md:text-base md:leading-7">
-            The product is intentionally narrow. We explain public information, help with private
-            pre-screening, and point back to the official study listing. We do not provide medical
-            advice or contact research sites on a patient&apos;s behalf.
-          </p>
+      <section className="bg-[#E8EDE6] py-24">
+        <div className="pm-container grid gap-12 md:grid-cols-[5fr_7fr] md:gap-20">
+          <div className="md:sticky md:top-24 md:self-start">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+              Founder
+            </p>
+            <h2
+              className="mt-4 font-display font-normal leading-[1.14] tracking-[-0.015em] text-foreground"
+              style={{ fontSize: "clamp(26px, 3vw, 40px)" }}
+            >
+              Independent, practical, and privacy-first.
+            </h2>
+          </div>
+          <CheckRows rows={founderRows} />
         </div>
       </section>
     </main>
