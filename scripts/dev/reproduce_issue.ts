@@ -1,10 +1,10 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { matchTrials } from './frontend/shared/match/index';
+import { matchTrials } from '../../shared/match/index';
 import * as dotenv from 'dotenv';
-import { toConditionSlug } from './frontend/shared/conditions-normalize';
+import { toConditionSlug } from '../../shared/conditions-normalize';
 
-dotenv.config({ path: './frontend/.env' });
+dotenv.config({ path: './.env' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

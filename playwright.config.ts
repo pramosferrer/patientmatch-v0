@@ -9,7 +9,7 @@ const chromiumProject = {
 };
 
 export default defineConfig({
-  testDir: 'frontend/e2e',
+  testDir: 'e2e',
   testMatch: '**/*.spec.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -44,7 +44,7 @@ export default defineConfig({
       ],
 
   webServer: {
-    command: `PORT=${port} npm run dev --prefix frontend`,
+    command: `PORT=${port} npm run dev -- --hostname 127.0.0.1`,
     url: baseURL,
     reuseExistingServer: false,
     timeout: 120 * 1000,

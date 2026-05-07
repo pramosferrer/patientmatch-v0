@@ -1,6 +1,6 @@
-import { adaptCriteriaJson, type UiQuestion } from "../frontend/lib/criteria/adapter";
-import { normalizeQuestionnaire } from "../frontend/lib/criteria/normalize";
-import { getServerSupabase } from "../frontend/lib/supabaseServer";
+import { adaptCriteriaJson, type UiQuestion } from "../lib/criteria/adapter";
+import { normalizeQuestionnaire } from "../lib/criteria/normalize";
+import { getServerSupabase } from "../lib/supabaseServer";
 
 type TrialRow = {
   nct_id: string;
