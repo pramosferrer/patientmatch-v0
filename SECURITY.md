@@ -43,3 +43,15 @@ Out of scope:
 - Sensitive profile fields and screener answers should not be logged.
 - Public issues and test fixtures must not contain real patient data.
 - Secrets must not be placed in `NEXT_PUBLIC_*` variables.
+
+## Dependency Review
+
+Run dependency checks with:
+
+```bash
+npm audit --audit-level=high
+```
+
+Do not use `npm audit fix --force` when it downgrades major framework packages or introduces a larger compatibility risk. Track moderate transitive advisories and resolve them through compatible upstream releases.
+
+Known dependency advisory tracking lives in `docs/security-advisories.md`.

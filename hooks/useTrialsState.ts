@@ -35,9 +35,9 @@ const DEFAULT_RADIUS = 50;
  * to ensure consistent isNationwide / display logic.
  */
 export function useTrialsState(input: TrialsStateInput): TrialsState {
-  return useMemo(() => {
-    const { condition, zip, radius, age, sex } = input;
+  const { condition, zip, radius, age, sex } = input;
 
+  return useMemo(() => {
     // Nationwide when no zip provided
     const isNationwide = !zip || zip.trim() === '';
 
@@ -83,7 +83,7 @@ export function useTrialsState(input: TrialsStateInput): TrialsState {
       sortOptions,
       defaultSort,
     };
-  }, [input.condition, input.zip, input.radius, input.age, input.sex]);
+  }, [condition, zip, radius, age, sex]);
 }
 
 /**

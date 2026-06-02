@@ -899,37 +899,9 @@ export default function Screener({
     });
   }, [criteria.length, isCompact, trial.conditionSlug, trial.nct_id]);
 
-  useEffect(() => {
-    if (process.env.NODE_ENV === "production") return;
-    const total = criteria.length + clinicQuestions.length;
-    console.info("[ScreenerFilter]", {
-      total,
-      patient: criteria.length,
-      clinic: clinicQuestions.length,
-      samplePatient: criteria.slice(0, 3).map((q) => ({
-        id: q.id,
-        kind: q.kind,
-        sourceTag: q.sourceTag,
-      })),
-      sampleClinic: clinicQuestions.slice(0, 3).map((item) => ({
-        id: item.id,
-        sourceTag: item.sourceTag,
-      })),
-    });
-  }, [clinicQuestions, criteria]);
-
   const totalSteps = criteria.length;
   const currentQuestion = criteria[stepIndex] ?? criteria[criteria.length - 1];
   const activeHeading = currentQuestion ? headingMap.get(currentQuestion.id) : null;
-  if (currentQuestion && process.env.NODE_ENV !== "production") {
-    console.info("[ActiveClause]", {
-      id: currentQuestion.id,
-      label: currentQuestion.label,
-      kind: currentQuestion.kind,
-      rule: currentQuestion.clause?.rule,
-      sourceTag: currentQuestion.sourceTag,
-    });
-  }
   const kindForActive = currentQuestion ? getQuestionKind(currentQuestion) : undefined;
   const currentQuestionId = currentQuestion?.id;
   const currentWhy = useMemo(
@@ -2350,9 +2322,6 @@ export default function Screener({
       const bounds = extractNumberBounds(question);
       const lo = Number.isFinite(bounds.min ?? NaN) ? (bounds.min as number) : 0;
       const hi = Number.isFinite(bounds.max ?? NaN) ? (bounds.max as number) : 120;
-      if (process.env.NODE_ENV !== "production" && typeof console !== "undefined") {
-        console.info("[AgeBounds]", { min: lo, max: hi, qid: question.id });
-      }
       const agePlaceholderNeeded =
         (!rawPlaceholder || rawPlaceholder.trim().length === 0) &&
         ((question.clause.rule?.variable ?? question.clause.rule?.field ?? "")

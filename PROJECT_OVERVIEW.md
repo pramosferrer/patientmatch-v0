@@ -2,15 +2,17 @@
 
 ## Architecture: Two Repos, One Database
 
-This repository (`patientmatch`) is the **Storefront**. It is responsible for the patient-facing UI, intake flows, and trial matching.
+This repository (`patientmatch-v0`) is the **Storefront**. It is responsible for the patient-facing UI, intake flows, and trial matching.
 
 1.  **Factory (`ct_project`)**: (External Repo) Handles AACT ingestion, DuckDB processing, PMQ (questionnaire) generation, and pushing data to Supabase.
 2.  **Serving (`Supabase`)**: The shared database. `ct_project` writes to it; `patientmatch` reads from it.
-3.  **Storefront (`patientmatch`)**: (This Repo) Next.js App Router application.
+3.  **Storefront (`patientmatch-v0`)**: (This Repo) Next.js App Router application.
 
 ## Folders
-- `/frontend`: Next.js app (UI/UX, patient intake, trial display)
-- `/frontend/shared`: Shared config, constants, utilities
+- `/app`: Next.js App Router pages and route handlers
+- `/components`: Patient-facing UI components
+- `/lib`: Supabase clients, matching utilities, adapters, and helpers
+- `/shared`: Shared config, constants, profile helpers, and utilities
 - `/supabase/migrations`: Database schema versioning (optional)
 - `/docs`: Project documentation and architecture notes
 

@@ -183,18 +183,6 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
   }
   const initialAnswers = { ...pmqAnswers, ...querySeeds };
 
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[screener:prefill sources]", {
-      routeKeys: Object.keys(querySeeds),
-      profileKeys: initialProfile
-        ? Object.keys(initialProfile).filter(
-          (key) => (initialProfile as Record<string, unknown>)[key] !== undefined,
-        )
-        : [],
-      precedence: "route_over_profile",
-    });
-  }
-
   const displayTitle = trial.display_title || trial.title;
   const minAgeYears =
     typeof trial.min_age_years === "number" ? trial.min_age_years : parseAgeToYears(trial.minimum_age);

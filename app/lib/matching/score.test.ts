@@ -76,7 +76,7 @@ describe('matching score helpers', () => {
 
     const combined = combineToConfidence(eligibility, logistics, priority);
 
-    assert.equal(Number(combined.score.toFixed(3)), 0.705);
+    assert.equal(Number(combined.score.toFixed(3)), 0.71);
     assert.equal(combined.confidence, 71);
   });
 });

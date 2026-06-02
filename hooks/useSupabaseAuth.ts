@@ -78,7 +78,7 @@ export function useSupabaseAuth() {
       active = false;
       subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!supabase) return;

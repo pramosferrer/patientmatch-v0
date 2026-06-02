@@ -11,6 +11,21 @@ Thanks for your interest in improving PatientMatch. This project is an open-sour
 - Tighten privacy and security behavior.
 - Improve responsive layout issues in patient flows.
 
+Concrete starter tasks:
+
+- Improve keyboard navigation in the trial screener.
+- Add tests for PMQ adapter edge cases.
+- Improve empty-state copy on trial search results.
+- Add synthetic questionnaire fixtures for common eligibility patterns.
+- Improve screen-reader labels on trial filters and saved-trial controls.
+- Document local Supabase setup using `fixtures/demo/seed.sql`.
+
+## Before You Start
+
+- Read `README.md`, `SECURITY.md`, and `CODE_OF_CONDUCT.md`.
+- Use synthetic examples in issues, tests, screenshots, and pull requests.
+- Keep the storefront focused on public trial discovery, patient-facing UI, and Supabase anon-read serving data.
+
 ## Local Setup
 
 ```bash
@@ -40,12 +55,17 @@ npm run test:e2e
 - Do not add service-role usage to storefront runtime paths.
 - Do not add ingestion, parsing, or registry-refresh logic to this repo without a documented serving-contract update.
 - Do not log screener answers, ZIP codes, condition history, contact details, or other sensitive personal data.
+- Do not include real patient examples in screenshots, fixtures, test data, or issue comments.
 
 ## Medical and Product Guardrails
 
 - PatientMatch does not provide medical advice.
 - Avoid language that guarantees eligibility, enrollment, treatment benefit, travel support, compensation, or remote participation unless that data is explicitly available.
 - Prefer patient-readable explanations and links to official ClinicalTrials.gov listings.
+
+## Labels
+
+Maintainers use labels such as `accessibility`, `privacy`, `documentation`, `patient-ux`, `questionnaire-rendering`, and `serving-contract` to route work. The label definitions live in `.github/labels.yml`.
 
 ## Reporting Issues
 

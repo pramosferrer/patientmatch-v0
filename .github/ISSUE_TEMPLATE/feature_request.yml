@@ -1,0 +1,49 @@
+name: Feature request
+description: Suggest a patient-facing or maintainer-facing improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        PatientMatch is public-good infrastructure for clinical trial discovery. Feature requests should improve patient access, transparency, accessibility, privacy, or maintainability.
+
+        Do not include personal health information, contact details, ZIP codes, diagnoses, screener answers, or other sensitive personal data.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What patient, caregiver, contributor, or maintainer problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Patient trial discovery
+        - Trial screener/questionnaire rendering
+        - Accessibility
+        - Privacy/security
+        - Documentation/setup
+        - Serving contract/Supabase reads
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: guardrails
+    attributes:
+      label: Guardrails
+      options:
+        - label: This request does not require service-role keys in the storefront.
+          required: true
+        - label: This request does not add ingestion, registry parsing, or PMQ generation logic to this repo.
+          required: true
+        - label: I did not include PHI/PII or sensitive personal data.
+          required: true

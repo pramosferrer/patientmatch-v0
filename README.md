@@ -1,27 +1,38 @@
 # PatientMatch
 
-PatientMatch is an open-source patient-facing clinical trial discovery frontend. It helps patients and caregivers browse public trial listings, understand why a study may be relevant, and walk through privacy-conscious screening questions before reviewing next steps.
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![CI](https://github.com/pramosferrer/patientmatch-v0/actions/workflows/ci.yml/badge.svg)](https://github.com/pramosferrer/patientmatch-v0/actions/workflows/ci.yml)
+[![Next.js](https://img.shields.io/badge/Next.js-App%20Router-black.svg)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 
-The project is designed as reusable public-good infrastructure for clinical trial access. It focuses on transparent trial cards, proximity-aware discovery, structured questionnaire rendering, and a storefront runtime that avoids service-role database access.
+PatientMatch is an open-source clinical trial discovery storefront that helps patients and caregivers understand nearby trial options, screening questions, and next steps using public trial data.
 
 Live site: https://patientmatch.health
 
-## What It Does
+## Screenshots
 
-- Browse clinical trials by condition and location.
-- Preserve a match profile across trial lists, detail pages, and screeners.
-- Render structured trial questionnaires from `questionnaire_json`.
-- Remove globally known questions such as age, sex at birth, ZIP, and diagnosis confirmation from trial-specific screeners.
-- Explain why a trial is shown using available signals such as condition match, location, recruitment status, phase, and site count.
-- Point patients toward official ClinicalTrials.gov listings and doctor-facing next steps.
+The current public flow starts with a guided intake and carries that match profile into trial discovery and screening.
 
-PatientMatch is not a medical device and does not provide medical advice, diagnosis, treatment, enrollment guarantees, or eligibility determinations. Trial teams and clinicians make final eligibility decisions.
+| Intake | Location | Follow-up |
+| --- | --- | --- |
+| ![PatientMatch intake welcome](docs/screens/01-welcome.png) | ![PatientMatch ZIP intake](docs/screens/04-zip.png) | ![PatientMatch follow-up step](docs/screens/08-follow-up.png) |
 
 ## Why This Matters
 
-Clinical trial discovery is a public-good problem. Raw registries are difficult for many patients to interpret, and eligibility criteria often hide the practical questions patients care about: whether a study is recruiting, where sites are located, whether their age or sex appears to fit, and what to ask a doctor next.
+Clinical trial registries are public, but they are difficult for many patients to interpret. Eligibility criteria, site locations, recruitment status, and next steps are often spread across dense records that are hard to scan.
 
-This repository aims to make those workflows easier to inspect, reuse, and improve in public.
+PatientMatch focuses on the patient-facing layer: trial browsing, proximity-aware discovery, structured screening questions, privacy-conscious profile handling, and reusable UI patterns that patient advocacy groups, clinics, researchers, and developers can inspect and adapt.
+
+PatientMatch is early-stage open-source software. It is not a medical device and does not provide medical advice, diagnosis, treatment, enrollment guarantees, or eligibility determinations. Trial teams and clinicians make final eligibility decisions.
+
+## What PatientMatch Provides
+
+- Trial discovery by condition and location.
+- A match profile that carries global intake fields across lists, detail pages, and screeners.
+- Patient-readable trial cards and next-step prompts.
+- Structured questionnaire rendering from `questionnaire_json`.
+- Deduplication of globally known questions such as age, sex at birth, ZIP, and diagnosis confirmation.
+- A storefront runtime that avoids service-role database access.
 
 ## Architecture
 
@@ -48,7 +59,13 @@ Core runtime boundaries:
 
 The storefront reads public trial and questionnaire data from Supabase with anon/RLS access. Data ingestion, registry refreshes, and service-role writes are intentionally outside this public storefront runtime.
 
-## Privacy Posture
+More detail:
+
+- `docs/architecture.md`
+- `docs/serving_contract.md`
+- `docs/public-interest.md`
+
+## Privacy and Safety
 
 PatientMatch is built to minimize sensitive data exposure:
 
@@ -61,13 +78,15 @@ PatientMatch is built to minimize sensitive data exposure:
 
 Do not put secrets in `NEXT_PUBLIC_*` variables. Do not file GitHub issues containing personal health information, contact details, screener answers, ZIP codes, or other sensitive personal data.
 
+See `docs/privacy-model.md` for the project privacy model.
+
 ## Local Development
 
 Requirements:
 
 - Node.js `>=20.11.0 <21`
 - npm `>=10.2.0`
-- Supabase project or compatible local serving data
+- Supabase project or compatible synthetic serving data
 
 Setup:
 
@@ -79,10 +98,14 @@ npm run dev
 
 Open http://localhost:3000.
 
+Synthetic fixtures are available in `fixtures/demo/`; see `docs/demo-data.md`.
+
 Useful commands:
 
 ```bash
 npm run lint
+npm run test:unit
+npm run demo:check
 npm run build
 npm run test:e2e
 ```
@@ -121,8 +144,15 @@ Useful contribution areas include:
 - Public documentation and setup improvements.
 - Safer privacy/security defaults.
 - Additional condition-page polish and patient education content.
+- Synthetic demo data and local setup improvements.
 
 Read `CONTRIBUTING.md` before opening a pull request.
+
+Please also read `CODE_OF_CONDUCT.md`. Public GitHub issues must use synthetic examples only and must not contain personal health information.
+
+Maintainer expectations are documented in `MAINTAINERS.md`.
+
+Planned work is tracked in `ROADMAP.md`.
 
 ## Security
 

@@ -1,0 +1,42 @@
+[
+  {
+    "nct_id": "NCT00000001",
+    "title": "Synthetic Study of Supportive Care Navigation",
+    "display_title": "Supportive care navigation study",
+    "conditions": ["synthetic_condition"],
+    "status_bucket": "Recruiting",
+    "quality_score": 0.91,
+    "sponsor": "Demo Research Network",
+    "phase": "Not Applicable",
+    "status": "Recruiting",
+    "states_list": ["MA"],
+    "readiness": true,
+    "is_publishable": true,
+    "questionnaire_json": {
+      "version": "pmq-demo",
+      "questions": [
+        {
+          "id": "age_years",
+          "text": "How old are you?",
+          "answer_type": "number",
+          "validation": { "min": 18, "max": 80, "unit": "years" },
+          "logic": [{ "section": "inclusion", "params": { "min": 18, "max": 80 } }]
+        },
+        {
+          "id": "diagnosis_confirmed",
+          "text": "Has a clinician confirmed this condition?",
+          "answer_type": "boolean",
+          "options": ["Yes", "No"],
+          "logic": [{ "section": "inclusion", "qualifies_when": "Yes" }]
+        },
+        {
+          "id": "recent_treatment",
+          "text": "Have you received treatment for this condition in the past 6 months?",
+          "answer_type": "boolean",
+          "options": ["Yes", "No", "Not sure"],
+          "logic": [{ "section": "inclusion", "qualifies_when": "Yes" }]
+        }
+      ]
+    }
+  }
+]

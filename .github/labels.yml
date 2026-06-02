@@ -1,0 +1,18 @@
+- name: accessibility
+  color: "0e8a16"
+  description: Accessibility, keyboard navigation, and screen-reader improvements.
+- name: privacy
+  color: "b60205"
+  description: Privacy, PHI/PII handling, logging, and sensitive data guardrails.
+- name: documentation
+  color: "0075ca"
+  description: README, docs, setup, and maintainer guidance.
+- name: patient-ux
+  color: "fbca04"
+  description: Patient-facing language, flows, and usability.
+- name: questionnaire-rendering
+  color: "5319e7"
+  description: PMQ adapter, screener rendering, and match-profile deduplication.
+- name: serving-contract
+  color: "1d76db"
+  description: Supabase serving-layer schema, RPCs, and public data contracts.

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security or privacy issue
+    url: mailto:security@patientmatch.health
+    about: Report vulnerabilities, accidental data exposure, or sensitive privacy concerns privately.
+  - name: Personal trial or health question
+    url: https://clinicaltrials.gov/
+    about: PatientMatch cannot provide medical advice or determine trial eligibility in GitHub issues.
