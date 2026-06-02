@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 /**
  * Public read-only Supabase client for unauthenticated server-side reads
  * such as trials, conditions, and counts. Use the SSR auth client in
- * lib/auth/supabaseServer.ts for user-specific routes, and supabaseAdmin.ts
- * only for service-role writes.
+ * lib/auth/supabaseServer.ts for user-specific routes. Storefront runtime
+ * paths use anon/RLS access only.
  */
 export function getServerSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
