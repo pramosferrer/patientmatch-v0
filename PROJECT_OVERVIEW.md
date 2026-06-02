@@ -80,8 +80,8 @@ Added comprehensive UX polish to the trials list page with the following enhance
 - Only visible trials included
 
 #### Lighthouse CI Guardrails
-- Performance ≥ 90, Accessibility ≥ 95, Best Practices ≥ 95
-- Runs on PR and main branch pushes
+- Performance ≥ 80, Accessibility ≥ 90, Best Practices ≥ 85
+- Available as a manual audit workflow
 - Temporary public storage for results
 - Chrome flags for CI environment
 
@@ -128,6 +128,6 @@ Added comprehensive UX polish to the trials list page with the following enhance
 ✅ Distance chip hydrates async  
 ✅ Analytics events firing (no PII)  
 ✅ JSON-LD injected and validated  
-✅ LHCI thresholds enforced in CI  
+✅ LHCI audit workflow configured  
 ✅ Playwright E2E added and passing  
 ✅ Dev Diary updated

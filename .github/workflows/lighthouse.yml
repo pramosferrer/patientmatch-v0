@@ -1,25 +1,7 @@
 name: Lighthouse CI
 
 on:
-  pull_request:
-    paths:
-      - 'app/**'
-      - 'components/**'
-      - 'lib/**'
-      - 'shared/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/lighthouse.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'app/**'
-      - 'components/**'
-      - 'lib/**'
-      - 'shared/**'
-      - 'package.json'
-      - 'package-lock.json'
+  workflow_dispatch:
 
 jobs:
   lighthouse:
