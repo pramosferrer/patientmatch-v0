@@ -11,11 +11,11 @@ Live site: https://patientmatch.health
 
 ## Screenshots
 
-The current public flow starts with a guided intake and carries that match profile into trial discovery and screening.
+The current public flow starts from condition search, narrows trial discovery with location, and links into a trial-specific screener.
 
-| Intake | Location | Follow-up |
+| Home | Discovery | Screener |
 | --- | --- | --- |
-| ![PatientMatch intake welcome](docs/screens/01-welcome.png) | ![PatientMatch ZIP intake](docs/screens/04-zip.png) | ![PatientMatch follow-up step](docs/screens/08-follow-up.png) |
+| ![PatientMatch home search](docs/screens/01-welcome.png) | ![PatientMatch trial discovery filters](docs/screens/04-zip.png) | ![PatientMatch eligibility screener](docs/screens/08-follow-up.png) |
 
 ## Why This Matters
 

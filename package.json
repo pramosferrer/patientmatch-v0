@@ -18,7 +18,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "shot:home": "tsx scripts/capture-home.ts"
+    "shot:home": "tsx scripts/capture-home.ts",
+    "shot:docs": "tsx scripts/capture-doc-screens.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.1",
