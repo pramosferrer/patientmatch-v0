@@ -307,11 +307,25 @@ function referencesSelectedCondition(
   return hits >= requiredHits;
 }
 
-function formatPrefilledAnswer(question: UiQuestion, value: unknown): string {
+export function formatPrefilledAnswer(
+  question: UiQuestion,
+  value: unknown,
+  selectedCondition?: string,
+): string {
   if (value === null) return "Not sure";
   if (value === undefined) return "Not answered";
 
   const kind = getQuestionKind(question);
+  const variable = getQuestionVariable(question);
+  const lower = `${question.id} ${question.label ?? ""} ${variable}`.toLowerCase();
+  if (
+    value === true &&
+    selectedCondition &&
+    (lower.includes("diagnos") || lower.includes("condition") || referencesSelectedCondition(selectedCondition, question, variable, question.label ?? ""))
+  ) {
+    return toConditionLabel(selectedCondition.toLowerCase().replace(/-/g, "_"));
+  }
+
   if (kind === "boolean") {
     if (value === true) return "Yes";
     if (value === false) return "No";
@@ -1421,6 +1435,14 @@ export default function Screener({
   // Helper to compute display progress
   const answeredCount = useMemo(() => Object.keys(completion).length, [completion]);
   const prefilledQuestionSummaries = useMemo<PrefilledQuestionSummary[]>(() => {
+    const selectedCondition =
+      (typeof answers.selected_condition === "string" && answers.selected_condition.trim()) ||
+      (typeof answers.condition === "string" && answers.condition.trim()) ||
+      (Array.isArray(answers.conditions) && typeof answers.conditions[0] === "string"
+        ? String(answers.conditions[0]).trim()
+        : "") ||
+      (typeof trial.conditionSlug === "string" && trial.conditionSlug.trim()) ||
+      undefined;
     return criteria
       .map((question) => {
         const source = prefillSources[question.id];
@@ -1432,12 +1454,12 @@ export default function Screener({
         return {
           id: question.id,
           label: question.label,
-          displayValue: formatPrefilledAnswer(question, value),
+          displayValue: formatPrefilledAnswer(question, value, selectedCondition),
           source,
         };
       })
       .filter((item): item is PrefilledQuestionSummary => item !== null);
-  }, [answers, completion, criteria, prefillSources]);
+  }, [answers, completion, criteria, prefillSources, trial.conditionSlug]);
   const prefilledCount = prefilledQuestionSummaries.length;
   const prefilledReviewStorageKey = useMemo(
     () => `screener:${trial.nct_id}:prefill_review_confirmed_v1`,

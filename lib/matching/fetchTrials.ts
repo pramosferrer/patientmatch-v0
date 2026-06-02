@@ -1,5 +1,4 @@
 import { getServerSupabase } from "@/lib/supabaseServer";
-import { getServiceClient } from "@/lib/supabaseAdmin";
 import {
   fetchNearestTrialsPage,
   fetchNearestTrialsPageByBoundingBox,
@@ -132,11 +131,7 @@ type FetchTrialsOptions = {
 };
 
 function getDirectSiteFallbackClient(supabase: ReturnType<typeof getServerSupabase>) {
-  try {
-    return getServiceClient();
-  } catch {
-    return supabase;
-  }
+  return supabase;
 }
 
 async function fetchRecruitingBrowsePage(

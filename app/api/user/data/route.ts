@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/auth/supabaseServer";
-import { getServiceClient } from "@/lib/supabaseAdmin";
 import {
   createRateLimitHeaders,
   getClientIp,
@@ -78,32 +77,22 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  try {
-    const admin = getServiceClient();
-    const [{ error: sessionsError }, { error: savedError }, { error: profileError }] = await Promise.all([
-      admin.from("screener_sessions").delete().eq("user_id", userId),
-      admin.from("saved_trials").delete().eq("user_id", userId),
-      admin.from("profiles").delete().eq("user_id", userId),
-    ]);
+  const [{ error: sessionsError }, { error: savedError }, { error: profileError }] = await Promise.all([
+    supabase.from("screener_sessions").delete().eq("user_id", userId),
+    supabase.from("saved_trials").delete().eq("user_id", userId),
+    supabase.from("profiles").delete().eq("user_id", userId),
+  ]);
 
-    if (sessionsError || savedError || profileError) {
-      return NextResponse.json({ error: "Failed to delete all user data." }, { status: 500 });
-    }
+  if (savedError || profileError) {
+    return NextResponse.json({ error: "Failed to delete user data." }, { status: 500 });
+  }
 
-    return NextResponse.json({ ok: true });
-  } catch {
-    const [{ error: savedError }, { error: profileError }] = await Promise.all([
-      supabase.from("saved_trials").delete().eq("user_id", userId),
-      supabase.from("profiles").delete().eq("user_id", userId),
-    ]);
-
-    if (savedError || profileError) {
-      return NextResponse.json({ error: "Failed to delete user data." }, { status: 500 });
-    }
-
+  if (sessionsError) {
     return NextResponse.json({
       ok: true,
-      warning: "Partial delete completed. Some screener sessions may remain.",
+      warning: "Profile and saved trials were deleted. Some screener sessions may remain because they are protected by account policies.",
     });
   }
+
+  return NextResponse.json({ ok: true });
 }

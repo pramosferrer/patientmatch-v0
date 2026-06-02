@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { getConditionCatalog } from '@/shared/conditions.catalog';
+import { getConditionCatalog, getConditionFilterValues } from '@/shared/conditions.catalog';
 import { CONDITION_DETAILS } from '@/shared/conditions';
 import { toConditionSlug } from '@/shared/conditions-normalize';
 import { getServerSupabase } from '@/lib/supabaseServer';
@@ -44,15 +44,18 @@ function getConditionDetail(slug: string, label: string) {
   };
 }
 
-function buildConditionFilters(label: string, slug: string, synonyms?: string[]) {
-  const values = new Set<string>();
-  values.add(slug);
-  values.add(label);
-  (synonyms ?? []).forEach((s) => { const t = s.trim(); if (t) values.add(t); });
-  return Array.from(values);
-}
-
 type ConditionTrial = PublicTrial & { data_as_of_date?: string | null };
+
+function formatDataFreshness(value?: string | null): string {
+  if (!value) return 'ClinicalTrials.gov source';
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return 'ClinicalTrials.gov source';
+  return `Data as of ${new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date)}`;
+}
 
 export async function generateStaticParams() {
   const catalog = await getConditionCatalog();
@@ -94,7 +97,11 @@ export default async function ConditionPage({
   const hex = getConditionHex(slug);
 
   const supabase = getServerSupabase();
-  const filterValues = buildConditionFilters(condition.label, slug, condition.synonyms);
+  const filterValues = getConditionFilterValues({
+    slug,
+    label: condition.label,
+    synonyms: condition.synonyms,
+  });
   let query = supabase
     .from('trials_serving_latest')
     .select('nct_id, title, display_title, status_bucket, conditions, quality_score, data_as_of_date, site_count_us, states_list');
@@ -118,6 +125,9 @@ export default async function ConditionPage({
   const recentTrials = trials.slice(0, Math.min(6, trials.length));
   const recruitingCount = count ?? trials.length;
   const recruitingTrialsHref = `/trials?condition=${slug}&status_bucket=recruiting`;
+  const freshnessLabel = formatDataFreshness(
+    trials[0]?.data_as_of_date ?? condition.lastUpdated,
+  );
 
   return (
     <>
@@ -189,7 +199,7 @@ export default async function ConditionPage({
 
                 {/* Meta badges */}
                 <div className="flex flex-wrap gap-2">
-	                  {['50 states', '35% with remote options', 'Refreshed daily', 'Free to join'].map(
+	                  {['50 states', 'Remote options vary by study', freshnessLabel, 'Free to use'].map(
                     (badge) => (
                       <span
                         key={badge}
@@ -294,7 +304,11 @@ export default async function ConditionPage({
               </div>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {recentTrials.map((trial) => (
-                  <PublicTrialCard key={trial.nct_id} trial={trial} />
+                  <PublicTrialCard
+                    key={trial.nct_id}
+                    trial={trial}
+                    contextParams={{ condition: slug }}
+                  />
                 ))}
               </div>
             </section>

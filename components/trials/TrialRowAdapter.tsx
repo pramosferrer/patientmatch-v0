@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useId } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Bookmark, BookmarkCheck, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ScoreBreakdownSheet from './ScoreBreakdownSheet';
@@ -18,7 +19,7 @@ import {
   type TrialCardProps,
   type FitLabel,
 } from './TrialCard';
-import { screenerHref } from '@/lib/urls';
+import { screenerHrefFromSearch } from '@/lib/urls';
 import { trialAnalytics } from '@/lib/analytics';
 import { useSavedTrials } from '@/lib/compare/state';
 import { toConditionLabel, toConditionSlug } from '@/shared/conditions-normalize';
@@ -158,6 +159,7 @@ export default function TrialRowAdapter({
   rowIndex,
   ...props
 }: TrialRowAdapterProps) {
+  const searchParams = useSearchParams();
   const breakdown = props.components ?? null;
   const visitModelValue = props.visitModel ?? props.visit_model ?? null;
   const visitModelLabel = visitModelValue ? VISIT_MODEL_COPY[visitModelValue] : null;
@@ -417,7 +419,7 @@ export default function TrialRowAdapter({
         )}
       >
         <Link
-          href={screenerHref({ nct_id: props.nct_id })}
+          href={screenerHrefFromSearch({ nct_id: props.nct_id }, searchParams)}
           prefetch
           aria-label={`Check eligibility for ${props.title}`}
           onClick={() => trialAnalytics.ctaClick(props.nct_id)}

@@ -156,7 +156,7 @@ export default function Hero() {
             {/* Live eyebrow */}
             <div className="inline-flex items-center gap-[9px] text-[11.5px] font-semibold uppercase tracking-[0.1em] text-primary w-fit">
               <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-primary animate-pulse" />
-              ClinicalTrials.gov data · refreshed daily
+              ClinicalTrials.gov source
             </div>
 
             {/* H1 */}

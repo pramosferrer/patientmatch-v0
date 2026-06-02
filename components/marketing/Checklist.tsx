@@ -11,7 +11,7 @@ const BENEFITS = [
   },
   {
     title: "Real logistics, clearly shown",
-    body: "Drive times and remote options for every site, shown before you commit to anything.",
+    body: "Nearby sites, location filters, and known study logistics are shown before you commit to anything.",
   },
   {
     title: "Transparent scoring",

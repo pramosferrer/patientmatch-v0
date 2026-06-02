@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { ExternalLink, Clock, FileText, MapPin } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import type { MatchConfidenceResult } from "@/lib/matching/matchConfidence";
-import { screenerHref, trialHref } from "@/lib/urls";
+import { screenerHref, trialHref, trialProfileQueryParams } from "@/lib/urls";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +48,7 @@ export type CardLayout = "row" | "card";
 type PublicTrialCardProps = {
   trial: PublicTrial;
   layout?: CardLayout;
+  contextParams?: Record<string, string | number | boolean | null | undefined>;
 };
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -104,10 +105,10 @@ function sitesText(trial: PublicTrial): string | null {
 function formatPhase(phase?: string | null): string | null {
   if (!phase) return null;
   const p = phase.trim();
-  // "Phase 1/Phase 2" → "Ph 1/2", "Phase 3" → "Ph 3"
+  if (/^phase\s*\d/i.test(p)) return p.replace(/Phase\s*(\d)\/Phase\s*(\d)/i, "Phase $1/$2");
   const normalized = p
-    .replace(/Phase\s*(\d)/gi, 'Ph $1')
-    .replace(/Ph\s+(\d)\/Ph\s+(\d)/gi, 'Ph $1/$2');
+    .replace(/Ph\s*(\d)/gi, 'Phase $1')
+    .replace(/Phase\s+(\d)\/Phase\s+(\d)/gi, 'Phase $1/$2');
   // Skip "N/A", "Not Applicable", or anything that didn't simplify
   if (/n\/?a/i.test(normalized) || normalized === p) return null;
   return normalized;
@@ -145,11 +146,17 @@ function getIntervention(mode?: string | null): string | null {
 
 // ─── Row layout ───────────────────────────────────────────────────────────────
 
-function RowCard({ trial }: { trial: PublicTrial }) {
+function RowCard({
+  trial,
+  contextParams,
+}: {
+  trial: PublicTrial;
+  contextParams?: PublicTrialCardProps["contextParams"];
+}) {
   const searchParams = useSearchParams();
-  const preservedZip = searchParams.get("zip")?.trim() || undefined;
-  const detailHref = trialHref({ nct_id: trial.nct_id }, { zip: preservedZip });
-  const screenerLink = screenerHref({ nct_id: trial.nct_id }, { zip: preservedZip });
+  const preservedParams = { ...contextParams, ...trialProfileQueryParams(searchParams) };
+  const detailHref = trialHref({ nct_id: trial.nct_id }, preservedParams);
+  const screenerLink = screenerHref({ nct_id: trial.nct_id }, preservedParams);
   const status = getStatusConfig(trial.status_bucket);
   const isScreenable = isScreenableStatus(trial.status_bucket);
   const displayTitle = trial.display_title || trial.title;
@@ -161,6 +168,12 @@ function RowCard({ trial }: { trial: PublicTrial }) {
   const { count: qCount, minutes } = qMeta(trial);
   const sites = sitesText(trial);
   const prefersReducedMotion = useReducedMotion();
+  const whyShown = [
+    distStr != null ? `${distStr} mi from your ZIP` : null,
+    status.isUrgent ? "Actively enrolling" : status.label,
+    formatPhase(trial.phase),
+    sites,
+  ].filter(Boolean).slice(0, 3);
 
   return (
     <motion.article
@@ -237,6 +250,12 @@ function RowCard({ trial }: { trial: PublicTrial }) {
               </div>
             );
           })()}
+          {whyShown.length > 0 && (
+            <p className="mt-1.5 text-[11.5px] text-muted-foreground/65">
+              <span className="font-semibold text-foreground/70">Why this is shown:</span>{" "}
+              {whyShown.join(" · ")}
+            </p>
+          )}
         </div>
 
         {/* Right column: status + meta + CTA — desktop only */}
@@ -288,6 +307,15 @@ function RowCard({ trial }: { trial: PublicTrial }) {
             View study
             <ExternalLink size={9} className="opacity-60" />
           </Link>
+          <a
+            href={`https://clinicaltrials.gov/study/${trial.nct_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11.5px] font-medium text-muted-foreground/60 hover:text-primary transition-colors flex items-center gap-0.5"
+          >
+            Official listing
+            <ExternalLink size={9} className="opacity-60" />
+          </a>
         </div>
       </div>
 
@@ -318,11 +346,17 @@ function RowCard({ trial }: { trial: PublicTrial }) {
 
 // ─── Card layout (used on conditions page 3-col grid) ────────────────────────
 
-function CardCard({ trial }: { trial: PublicTrial }) {
+function CardCard({
+  trial,
+  contextParams,
+}: {
+  trial: PublicTrial;
+  contextParams?: PublicTrialCardProps["contextParams"];
+}) {
   const searchParams = useSearchParams();
-  const preservedZip = searchParams.get("zip")?.trim() || undefined;
-  const detailHref = trialHref({ nct_id: trial.nct_id }, { zip: preservedZip });
-  const screenerLink = screenerHref({ nct_id: trial.nct_id }, { zip: preservedZip });
+  const preservedParams = { ...contextParams, ...trialProfileQueryParams(searchParams) };
+  const detailHref = trialHref({ nct_id: trial.nct_id }, preservedParams);
+  const screenerLink = screenerHref({ nct_id: trial.nct_id }, preservedParams);
   const status = getStatusConfig(trial.status_bucket);
   const isScreenable = isScreenableStatus(trial.status_bucket);
   const displayTitle = trial.display_title || trial.title;
@@ -334,6 +368,13 @@ function CardCard({ trial }: { trial: PublicTrial }) {
   const { count: qCount, minutes } = qMeta(trial);
   const sites = sitesText(trial);
   const prefersReducedMotion = useReducedMotion();
+  const phase = formatPhase(trial.phase);
+  const whyShown = [
+    distStr != null ? `${distStr} mi from your ZIP` : null,
+    status.isUrgent ? "Actively enrolling" : status.label,
+    phase,
+    sites,
+  ].filter(Boolean).slice(0, 3);
 
   return (
     <motion.article
@@ -396,6 +437,13 @@ function CardCard({ trial }: { trial: PublicTrial }) {
         </p>
       )}
 
+      {whyShown.length > 0 && (
+        <p className="mb-3 text-[12px] leading-snug text-muted-foreground/70">
+          <span className="font-semibold text-foreground/70">Why this is shown:</span>{" "}
+          {whyShown.join(" · ")}
+        </p>
+      )}
+
       {/* Footer */}
       <div className="mt-auto flex items-center justify-between gap-2 border-t border-border/30 pt-3">
         <div className="flex items-center gap-2 text-[11.5px] text-muted-foreground/60">
@@ -437,8 +485,8 @@ function CardCard({ trial }: { trial: PublicTrial }) {
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 
-export default function PublicTrialCard({ trial, layout = "card" }: PublicTrialCardProps) {
+export default function PublicTrialCard({ trial, layout = "card", contextParams }: PublicTrialCardProps) {
   return layout === "row"
-    ? <RowCard trial={trial} />
-    : <CardCard trial={trial} />;
+    ? <RowCard trial={trial} contextParams={contextParams} />
+    : <CardCard trial={trial} contextParams={contextParams} />;
 }

@@ -197,3 +197,46 @@ test("PMQ caregiver perspective keeps subject pronouns grammatical", () => {
   assert.equal(labels.includes("If they could become pregnant, would they use birth control during the study?"), true);
   assert.equal(labels.some((label) => /\b(are|do|does|have|can|could|will|would|should)\s+them\b/i.test(label)), false);
 });
+
+test("PMQ adapter skips global profile questions when query profile is present", () => {
+  const ui = pmqToUiQuestions(
+    {
+      questions: [
+        {
+          question_key: "age_years",
+          text: "How old are you?",
+          answer_type: "number",
+        },
+        {
+          question_key: "sex_at_birth",
+          text: "What sex were you assigned at birth?",
+          answer_type: "single_select",
+          options: ["Male", "Female", "Not sure"],
+        },
+        {
+          question_key: "diagnosis_confirmed",
+          text: "Have you been diagnosed with migraine?",
+          answer_type: "single_select",
+          options: ["Yes", "No", "Not sure"],
+        },
+        {
+          question_key: "prior_treatment",
+          text: "Have you tried preventive medication?",
+          answer_type: "single_select",
+          options: ["Yes", "No", "Not sure"],
+        },
+      ],
+    },
+    {
+      age_years: 45,
+      sex_at_birth: "female",
+      diagnosis_confirmed: true,
+      zip: "10001",
+    },
+  );
+
+  assert.deepEqual(ui.mainQuestions.map((question) => question.id), ["prior_treatment"]);
+  assert.equal(ui.initialAnswers.age_years, 45);
+  assert.equal(ui.initialAnswers.sex_at_birth, "female");
+  assert.equal(ui.initialAnswers.diagnosis_confirmed, true);
+});

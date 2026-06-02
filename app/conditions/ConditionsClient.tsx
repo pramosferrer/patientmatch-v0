@@ -47,6 +47,16 @@ function getConditionDescription(condition: ConditionItem) {
   return `Clinical trials for ${condition.label} and related care.`;
 }
 
+function formatCatalogFreshness(version: string) {
+  const date = new Date(version);
+  if (Number.isNaN(date.getTime())) return 'Counts come from ClinicalTrials.gov listings.';
+  return `Counts use ClinicalTrials.gov data as of ${new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date)}.`;
+}
+
 function FeaturedCard({ condition }: { condition: ConditionItem }) {
   const [hov, setHov] = useState(false);
   const hex = getConditionHex(condition.slug);
@@ -258,7 +268,7 @@ export default function ConditionsClient({
               Find trials for your condition.
             </h1>
             <p className="mb-8 max-w-[500px] text-[17px] leading-relaxed text-muted-foreground">
-              Browse conditions with actively recruiting clinical studies. Counts are refreshed daily.
+              Browse conditions with actively recruiting clinical studies. {formatCatalogFreshness(catalog.version)}
             </p>
 
             {/* Search */}

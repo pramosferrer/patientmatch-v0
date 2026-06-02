@@ -122,20 +122,30 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
   }
 
   const initialProfile = profileCookie ?? null;
+  const parsedAgeParam = typeof ageParam === "string" ? parseInt(ageParam, 10) : NaN;
   const selectedConditionSlug =
     (typeof conditionParam === "string" && conditionParam.trim().length > 0
       ? conditionParam.trim()
       : Array.isArray(initialProfile?.conditions) && initialProfile.conditions.length > 0
         ? initialProfile.conditions[0]
         : null) ?? null;
-  const profileForPmq = initialProfile
-    ? {
-      age_years: initialProfile.age,
-      sex_at_birth: initialProfile.sex,
-      zip: zipParam ?? initialProfile.zip,
-    }
-    : zipParam
-      ? { zip: zipParam }
+  const profileForPmq =
+    initialProfile || zipParam || ageParam || sexParam || selectedConditionSlug
+      ? {
+          age_years:
+            Number.isFinite(parsedAgeParam) && parsedAgeParam > 0
+              ? parsedAgeParam
+              : initialProfile?.age,
+          sex_at_birth:
+            typeof sexParam === "string" && sexParam.trim().length > 0
+              ? sexParam.trim()
+              : initialProfile?.sex,
+          zip:
+            typeof zipParam === "string" && zipParam.trim().length > 0
+              ? zipParam.trim()
+              : initialProfile?.zip,
+          diagnosis_confirmed: selectedConditionSlug ? true : (initialProfile as any)?.diagnosis_confirmed,
+        }
       : undefined;
   const { mainQuestions, optionalQuestions, initialAnswers: pmqAnswers } = pmqToUiQuestions(
     trial.questionnaire_json,
@@ -144,11 +154,10 @@ export default async function TrialScreenPage({ params, searchParams }: PageProp
   const uiQuestions = mainQuestions; // Main questions for the screener flow
 
   const querySeeds: Record<string, unknown> = {};
-  const parsedAge = typeof ageParam === "string" ? parseInt(ageParam, 10) : NaN;
-  if (Number.isFinite(parsedAge) && parsedAge > 0) {
-    querySeeds.age = parsedAge;
-    querySeeds.age_years = parsedAge;
-    querySeeds.dem_age = parsedAge;
+  if (Number.isFinite(parsedAgeParam) && parsedAgeParam > 0) {
+    querySeeds.age = parsedAgeParam;
+    querySeeds.age_years = parsedAgeParam;
+    querySeeds.dem_age = parsedAgeParam;
   }
   if (typeof sexParam === "string" && sexParam.trim().length > 0) {
     querySeeds.sex = sexParam.trim();

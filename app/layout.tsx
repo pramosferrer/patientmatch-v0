@@ -3,6 +3,7 @@ import "./globals.css";
 import { Inter, Manrope, Merriweather, Fraunces } from "next/font/google";
 import Link from "next/link";
 import Script from "next/script";
+import { Analytics } from "@vercel/analytics/next";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
@@ -234,6 +235,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </footer>
         </div>
+        <Analytics />
       </body>
     </html>
   );

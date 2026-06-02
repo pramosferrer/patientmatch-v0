@@ -39,6 +39,11 @@ type TrialConditionRow = {
   status_bucket: string | null;
 };
 
+type ConditionStats = {
+  count: number;
+  lastUpdated: string | null;
+};
+
 type ConditionDirectoryRow = {
   condition_slug: string | null;
   condition_label: string | null;
@@ -201,15 +206,32 @@ function slugToTitleCase(slug: string): string {
     .join(' ');
 }
 
-// Build the overlaps filter values for a seed condition (slug + label + synonym slugs + synonym labels)
-function seedFilterValues(seed: Omit<ConditionItem, 'count' | 'source'>): string[] {
+function rawConditionSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+// Build overlaps filter values for a condition (slug + label + synonym slugs + synonym labels).
+export function getConditionFilterValues(input: {
+  slug: string;
+  label: string;
+  synonyms?: string[];
+}): string[] {
   const values = new Set<string>();
-  values.add(seed.slug);
-  values.add(toConditionLabel(seed.slug));
-  for (const syn of seed.synonyms ?? []) {
+  values.add(input.slug);
+  values.add(input.label);
+  values.add(rawConditionSlug(input.label));
+  values.add(toConditionLabel(input.slug));
+  for (const syn of input.synonyms ?? []) {
     const t = syn.trim();
     if (t) {
       values.add(t);
+      const rawSlug = rawConditionSlug(t);
+      if (rawSlug) values.add(rawSlug);
       const s = toConditionSlug(t);
       if (s && s !== 'other') values.add(s);
     }
@@ -222,7 +244,7 @@ const SEED_MAP = new Map(SEED_CONDITIONS.map((seed) => [seed.slug, seed]));
 function buildSeedAliasMap(): Map<string, string> {
   const aliases = new Map<string, string>();
   for (const seed of SEED_CONDITIONS) {
-    for (const value of seedFilterValues(seed)) {
+    for (const value of getConditionFilterValues(seed)) {
       const normalized = toConditionSlug(value);
       if (normalized && normalized !== 'other') aliases.set(normalized, seed.slug);
     }
@@ -283,6 +305,82 @@ function conditionItemFromDirectoryRow(row: ConditionDirectoryRow): ConditionIte
     source: seed ? 'seed' : row.source ?? 'db',
     lastUpdated: row.updated_at,
   };
+}
+
+function latestDate(values: Array<string | null | undefined>): string | null {
+  const sorted = values
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .sort((a, b) => b.localeCompare(a));
+  return sorted[0] ?? null;
+}
+
+function catalogVersionFromItems(items: ConditionItem[]): string {
+  return latestDate(items.map((item) => item.lastUpdated)) ?? new Date().toISOString();
+}
+
+async function fetchRecruitingConditionStats(
+  supabase: ReturnType<typeof getServerSupabase>,
+  condition: { slug: string; label: string; synonyms?: string[] },
+): Promise<ConditionStats> {
+  const filterValues = getConditionFilterValues(condition);
+  let countQuery = supabase
+    .from('trials_serving_latest')
+    .select('nct_id', { count: 'exact', head: true })
+    .eq('status_bucket', 'Recruiting');
+  if (filterValues.length > 0) countQuery = countQuery.overlaps('conditions', filterValues);
+
+  let freshnessQuery = supabase
+    .from('trials_serving_latest')
+    .select('data_as_of_date')
+    .eq('status_bucket', 'Recruiting')
+    .order('data_as_of_date', { ascending: false, nullsFirst: false })
+    .limit(1);
+  if (filterValues.length > 0) freshnessQuery = freshnessQuery.overlaps('conditions', filterValues);
+
+  const [{ count, error: countError }, { data, error: freshnessError }] = await Promise.all([
+    countQuery,
+    freshnessQuery,
+  ]);
+  if (countError) throw countError;
+  if (freshnessError) throw freshnessError;
+
+  return {
+    count: count ?? 0,
+    lastUpdated:
+      typeof data?.[0]?.data_as_of_date === 'string'
+        ? data[0].data_as_of_date
+        : null,
+  };
+}
+
+async function applySeedStats(
+  supabase: ReturnType<typeof getServerSupabase>,
+  items: ConditionItem[],
+): Promise<ConditionItem[]> {
+  const seedItems = items.filter((item) => SEED_MAP.has(item.slug));
+  if (seedItems.length === 0) return items;
+
+  const statsEntries = await Promise.all(
+    seedItems.map(async (item) => {
+      const seed = SEED_MAP.get(item.slug)!;
+      try {
+        return [item.slug, await fetchRecruitingConditionStats(supabase, seed)] as const;
+      } catch {
+        return [item.slug, null] as const;
+      }
+    }),
+  );
+  const statsBySlug = new Map(statsEntries);
+
+  return items.map((item) => {
+    const stats = statsBySlug.get(item.slug);
+    if (!stats) return item;
+    return {
+      ...item,
+      count: stats.count,
+      lastUpdated: stats.lastUpdated ?? item.lastUpdated,
+    };
+  });
 }
 
 function isPatientFriendlyDirectoryItem(item: ConditionItem) {
@@ -348,13 +446,14 @@ async function queryConditionDirectoryRows({
 
 export async function getConditionDirectoryPreview(limit = DEFAULT_DIRECTORY_LIMIT): Promise<ConditionCatalog> {
   try {
+    const supabase = getServerSupabase();
     const rows = await queryConditionDirectoryRows({ limit });
-    const items = rows
+    const directoryItems = rows
       .map(conditionItemFromDirectoryRow)
       .filter((item): item is ConditionItem => Boolean(item))
       .filter(isPatientFriendlyDirectoryItem);
 
-    const bySlug = new Map(items.map((item) => [item.slug, item]));
+    const bySlug = new Map(directoryItems.map((item) => [item.slug, item]));
     for (const seed of SEED_CONDITIONS) {
       if (!bySlug.has(seed.slug)) {
         bySlug.set(seed.slug, {
@@ -366,12 +465,12 @@ export async function getConditionDirectoryPreview(limit = DEFAULT_DIRECTORY_LIM
       }
     }
 
-    const all = Array.from(bySlug.values()).sort(sortCatalogItems);
+    const all = (await applySeedStats(supabase, Array.from(bySlug.values()))).sort(sortCatalogItems);
     return {
       featured: all.filter((item) => FEATURED_SLUGS.includes(item.slug)),
       all,
       filtered: all,
-      version: new Date().toISOString(),
+      version: catalogVersionFromItems(all),
     };
   } catch (error) {
     devLog('Condition directory preview unavailable; using seed-only preview.', error);
@@ -390,12 +489,14 @@ export async function searchConditionDirectory({
   }
 
   try {
+    const supabase = getServerSupabase();
     const rows = await queryConditionDirectoryRows({ query: trimmed, limit });
-    return rows
+    const items = rows
       .map(conditionItemFromDirectoryRow)
       .filter((item): item is ConditionItem => Boolean(item))
-      .filter(isSearchableConditionItem)
-      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+      .filter(isSearchableConditionItem);
+    const adjusted = await applySeedStats(supabase, items);
+    return adjusted.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
   } catch (error) {
     devLog('Condition directory search unavailable; using seed-only search.', error);
     const q = trimmed.toLowerCase();
@@ -420,7 +521,7 @@ async function buildConditionCatalog(options: CatalogOptions = {}): Promise<Cond
     try {
       const directoryRows = await fetchConditionDirectoryRows(supabase);
       if (directoryRows.length > 0) {
-        const all = directoryRows
+        const directoryItems = directoryRows
           .filter((row) => row.condition_slug && (includeEmpty || (row.recruiting_count ?? 0) > 0))
           .map((row): ConditionItem => {
             const slug = row.condition_slug!;
@@ -435,6 +536,7 @@ async function buildConditionCatalog(options: CatalogOptions = {}): Promise<Cond
               lastUpdated: row.updated_at,
             };
           });
+        const all = await applySeedStats(supabase, directoryItems);
 
         all.sort(sortCatalogItems);
         const featured = all.filter(item => FEATURED_SLUGS.includes(item.slug));
@@ -447,7 +549,7 @@ async function buildConditionCatalog(options: CatalogOptions = {}): Promise<Cond
           featured,
           all,
           filtered,
-          version: new Date().toISOString()
+          version: catalogVersionFromItems(all)
         };
       }
     } catch (directoryError) {
@@ -523,7 +625,7 @@ async function buildConditionCatalog(options: CatalogOptions = {}): Promise<Cond
       featured,
       all,
       filtered,
-      version: new Date().toISOString()
+      version: catalogVersionFromItems(all)
     };
 
     devLog(`✅ Built catalog: ${featured.length} featured, ${all.length} total, ${filtered.length} filtered (minCount: ${minCount})`);
@@ -531,8 +633,8 @@ async function buildConditionCatalog(options: CatalogOptions = {}): Promise<Cond
     return catalog;
 
   } catch (error) {
-    console.error('❌ Error building condition catalog:', error);
-    console.error('Error details:', {
+    devLog('Condition catalog unavailable; using seed-only fallback.', error);
+    devLog('Condition catalog error details:', {
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
       raw: error

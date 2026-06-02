@@ -14,6 +14,7 @@ import ExclusionCallout from "@/components/trial/ExclusionCallout";
 import ParticipationEffort from "@/components/trial/ParticipationEffort";
 import { decryptProfileToken } from "@/shared/profileCookie";
 import { resolveZipToLatLon } from "@/shared/geo";
+import { screenerHref, trialProfileQueryParams } from "@/lib/urls";
 
 type PageProps = {
   params: Promise<{ nct_id: string }>;
@@ -61,15 +62,16 @@ function normalizeZip(value: unknown): string | null {
   return /^\d{5}$/.test(trimmed) ? trimmed : null;
 }
 
-function buildHrefWithZip(path: string, zip?: string | null): string {
-  if (!zip) return path;
-  const params = new URLSearchParams({ zip });
-  return `${path}?${params.toString()}`;
-}
-
 function isScreenableStatus(bucket?: string | null): boolean {
   const normalized = bucket?.trim().toLowerCase() ?? "";
   return normalized === "recruiting" || normalized === "active";
+}
+
+function formatPhaseForPatients(value?: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed || /not applicable|n\/?a/i.test(trimmed)) return null;
+  return trimmed.replace(/Phase\s*(\d)\/Phase\s*(\d)/i, "Phase $1/$2");
 }
 
 function toRad(value: number): number {
@@ -266,8 +268,20 @@ export default async function TrialDetailPage({ params, searchParams }: PageProp
   }
 
   const locationLabel = buildLocationLabel(nearestSite, nearestSiteDistanceMiles);
-  const detailScreenerHref = buildHrefWithZip(`/trial/${trial.nct_id}/screen`, effectiveZip);
+  const profileParams: Record<string, string | number | boolean | null | undefined> = {
+    ...trialProfileQueryParams(resolvedSearchParams),
+    ...(effectiveZip ? { zip: effectiveZip } : {}),
+  };
+  const detailScreenerHref = screenerHref({ nct_id: trial.nct_id }, profileParams);
   const isScreenable = isScreenableStatus(trial.status_bucket);
+  const whyShownItems = [
+    profileParams.condition ? `Matches ${String(profileParams.condition).replace(/[_-]+/g, " ")}` : null,
+    locationLabel && effectiveZip ? `${locationLabel} near ${effectiveZip}` : locationLabel,
+    profileParams.age ? `Age ${profileParams.age} filter applied` : null,
+    profileParams.sex ? `${String(profileParams.sex).charAt(0).toUpperCase()}${String(profileParams.sex).slice(1)} filter applied` : null,
+    isScreenable ? "Actively enrolling" : null,
+    formatPhaseForPatients(trial.phase),
+  ].filter((item): item is string => Boolean(item));
 
   const plainSummaryObj = typeof insights?.plain_summary_json === "object" ? insights.plain_summary_json as Record<string, any> : null;
   const designObj = plainSummaryObj?.structured?.design as Record<string, any> | undefined;
@@ -289,6 +303,24 @@ export default async function TrialDetailPage({ params, searchParams }: PageProp
           />
 
           <AtAGlance trial={trial} insights={insights} locationLabel={locationLabel} />
+
+          {whyShownItems.length > 0 && (
+            <section className="rounded-lg border border-border/60 bg-white/85 p-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+                Why this study is shown
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {whyShownItems.slice(0, 5).map((item) => (
+                  <span
+                    key={item}
+                    className="rounded-full border border-border/50 bg-background px-3 py-1 text-sm text-muted-foreground"
+                  >
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
 
           <TrialSummary
             insights={insights}

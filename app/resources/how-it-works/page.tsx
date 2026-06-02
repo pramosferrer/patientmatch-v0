@@ -77,7 +77,7 @@ const privacyList = [
   'Start without personal information.',
   'You decide what to share, and when.',
   'No ads or pay-to-rank results.',
-  'Study data refreshed daily from public sources.',
+  'Study data is sourced from public ClinicalTrials.gov listings.',
 ];
 
 export const metadata: Metadata = {

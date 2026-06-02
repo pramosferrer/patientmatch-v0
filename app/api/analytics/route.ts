@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { getServiceClient } from "@/lib/supabaseAdmin";
 import { sanitizeAnalyticsProps } from "@/lib/analytics";
 import { z } from "zod";
 import {
@@ -67,22 +66,6 @@ export async function POST(request: NextRequest) {
     return response;
   }
 
-  if (process.env.FEATURE_ALLOW_WRITES !== "true") {
-    return response;
-  }
-
-  try {
-    const supabase = getServiceClient();
-    await supabase.from("events").insert({
-      name: eventName,
-      props: {
-        ...sanitizedProps,
-        session_hash: sessionHash,
-      },
-    });
-  } catch {
-    /* best-effort */
-  }
-
+  void sanitizedProps;
   return response;
 }

@@ -1,4 +1,4 @@
-import { resolveInitialAnswerForQuestion } from "../Screener";
+import { formatPrefilledAnswer, resolveInitialAnswerForQuestion } from "../Screener";
 import { SourceTag, type UiQuestion } from "../../lib/screener/types";
 
 const ageQuestion: UiQuestion = {
@@ -32,6 +32,21 @@ const sexQuestion: UiQuestion = {
   sourceTag: SourceTag.Patient,
 };
 
+const diagnosisQuestion: UiQuestion = {
+  id: "diagnosis_confirmed",
+  kind: "boolean",
+  label: "Have you been diagnosed with Migraine?",
+  clause: {
+    criterion_id: "diagnosis_confirmed",
+    type: "inclusion",
+    category: "diagnosis",
+    source: "patient",
+    critical: true,
+    rule: { variable: "diagnosis_confirmed" },
+  },
+  sourceTag: SourceTag.Patient,
+};
+
 describe("resolveInitialAnswerForQuestion", () => {
   it("returns initial answers for demographic variables so the screener can auto-advance", () => {
     const initialMap = new Map<string, unknown>([
@@ -41,5 +56,9 @@ describe("resolveInitialAnswerForQuestion", () => {
 
     expect(resolveInitialAnswerForQuestion(ageQuestion, initialMap)).toBe(44);
     expect(resolveInitialAnswerForQuestion(sexQuestion, initialMap)).toBe("female");
+  });
+
+  it("formats diagnosis prefill as the condition label instead of raw true", () => {
+    expect(formatPrefilledAnswer(diagnosisQuestion, true, "migraine")).toBe("Migraine");
   });
 });
